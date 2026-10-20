@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+.vercel/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs and runtime data
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.pid
+*.pid.lock
+
+# Test and tool caches
+coverage/
+.cache/
+.turbo/
+.eslintcache
+
+# Generated TypeScript and Prisma artifacts
+*.tsbuildinfo
+
+# Python artifacts used by Video Creator scripts
+__pycache__/
+*.py[cod]
+
+# Local uploads and generated media
+public/uploads/
+uploads/
+outputs/
+work_dir/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

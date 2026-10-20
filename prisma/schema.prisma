@@ -1,0 +1,375 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CharacterClass {
+  KIEM_TU
+  DAO_TU
+  THE_TU
+}
+
+enum MissionDifficulty {
+  EASY
+  NORMAL
+  HARD
+  EPIC
+}
+
+enum MissionRepeatType {
+  DAILY
+  WEEKLY
+  ONCE
+}
+
+enum MissionLogStatus {
+  COMPLETED
+  SKIPPED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum PushNotificationType {
+  MISSION_DAILY
+  EVENT_START
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(USER)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  characters   Character[]
+  attributes   Attribute[]
+  missions     Mission[]
+  missionLogs  MissionLog[]
+  calendarEvents CalendarEvent[]
+  notificationSetting NotificationSetting?
+  pushDeliveries PushNotificationDelivery[]
+  pushSubscriptions PushSubscription[]
+  tuTienGames    TuTienGame[]
+
+  @@map("users")
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  userId      String
+
+  title       String
+  location    String?
+  content     String?
+  startDate   DateTime
+  endDate     DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startDate])
+  @@map("calendar_events")
+}
+
+model NotificationSetting {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+
+  missionEnabled        Boolean  @default(true)
+  missionTime           String   @default("20:00")
+  eventEnabled          Boolean  @default(true)
+  eventTime             String   @default("09:00")
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+model PushNotificationTemplate {
+  id        String               @id @default(cuid())
+  type      PushNotificationType @unique
+
+  title     String
+  body      String
+
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@map("push_notification_templates")
+}
+
+model PushNotificationDelivery {
+  id        String               @id @default(cuid())
+  userId    String
+  type      PushNotificationType
+  targetDate DateTime
+  entityId  String?
+
+  createdAt DateTime             @default(now())
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, targetDate, entityId])
+  @@index([userId])
+  @@index([targetDate])
+  @@map("push_notification_deliveries")
+}
+
+model Character {
+  id        String         @id @default(cuid())
+  userId    String
+
+  name      String
+  className CharacterClass @default(KIEM_TU)
+  level     Int            @default(1)
+  exp       Int            @default(0)
+  gold      Int            @default(0)
+  avatarUrl String?
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attributes Attribute[]
+  missions   Mission[]
+  missionLogs MissionLog[]
+  tuTienGame  TuTienGame?
+
+  @@index([userId])
+  @@map("characters")
+}
+
+model Attribute {
+  id        String   @id @default(cuid())
+  userId    String
+  characterId String
+
+  name      String
+  value     Int      @default(0)
+  multiplier Float    @default(1.0)
+  color     String?
+  icon      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  missions  Mission[]
+
+  @@unique([characterId, name])
+  @@index([characterId])
+  @@map("attributes")
+}
+
+model Mission {
+  id          String              @id @default(cuid())
+  userId      String
+  characterId String
+  attributeId String
+
+  title       String
+  description String?
+
+  difficulty  MissionDifficulty  @default(NORMAL)
+  repeatType  MissionRepeatType  @default(DAILY)
+
+  startDate   DateTime?
+  endDate     DateTime?
+
+  expReward   Int                 @default(20)
+  goldReward  Int                 @default(5)
+  statReward  Int                 @default(1)
+
+  isActive    Boolean             @default(true)
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character   Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  attribute   Attribute           @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  logs        MissionLog[]
+
+  @@index([userId])
+  @@index([characterId])
+  @@index([attributeId])
+  @@map("missions")
+}
+
+model MissionLog {
+  id            String           @id @default(cuid())
+  missionId     String
+  userId        String
+  characterId   String
+
+  completedDate DateTime
+  status        MissionLogStatus @default(COMPLETED)
+  note          String?
+
+  expEarned     Int
+  goldEarned    Int
+  statEarned    Int              @default(0)
+
+  createdAt     DateTime         @default(now())
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character      Character       @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  mission        Mission         @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, completedDate])
+  @@index([userId])
+  @@index([characterId])
+  @@index([completedDate])
+  @@map("mission_logs")
+}
+
+model DailyQuote {
+  id        String   @id @default(cuid())
+
+  content   String
+  author    String?
+  category  String?
+
+  createdAt DateTime @default(now())
+
+  @@map("daily_quotes")
+}
+
+model TuTienGame {
+  id        String   @id @default(cuid())
+  userId    String
+  characterId String  @unique
+
+  seed      Int
+  turn      Int      @default(1)
+  difficulty String
+  gainMult  Float
+  dangerMult Float
+  status    String   @default("active")
+  llmProvider String @default("none")
+
+  player    TuTienPlayer?
+  world     TuTienWorld?
+  history   TuTienHistory[]
+  scenes    TuTienScene[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tu_tien_games")
+}
+
+model TuTienPlayer {
+  id        String   @id @default(cuid())
+  name      String
+  age       Int      @default(16)
+  lifespan  Int      @default(90)
+  origin    String
+  spiritRoot String
+  cultivation Float    @default(0)
+  realm     String   @default("Phàm Nhân")
+  hp        Int      @default(100)
+  maxHp     Int      @default(100)
+  spiritStones Int    @default(0)
+  will      Int      @default(5)
+  luck      Int      @default(5)
+  reputation Int     @default(0)
+  inventory String[]
+  relations Json?
+  flags     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  gameId    String   @unique
+  game      TuTienGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("tu_tien_players")
+}
+
+model TuTienWorld {
+  id        String   @id @default(cuid())
+  name      String
+  year      Int
+  region    String
+  sects     String[]
+  factions  String[]
+  publicEvents String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  gameId    String   @unique
+  game      TuTienGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("tu_tien_worlds")
+}
+
+model TuTienHistory {
+  id        String   @id @default(cuid())
+  gameId    String
+
+  turn      Int
+  action    String
+  result    Json
+
+  createdAt DateTime @default(now())
+
+  game      TuTienGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+  @@map("tu_tien_histories")
+}
+
+model TuTienScene {
+  id        String   @id @default(cuid())
+  gameId    String
+
+  turn      Int
+  title     String
+  story     String
+  choices   String[]
+
+  createdAt DateTime @default(now())
+
+  game      TuTienGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+  @@map("tu_tien_scenes")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}

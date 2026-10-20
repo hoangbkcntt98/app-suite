@@ -1,0 +1,165 @@
+.page {
+  min-height: 100vh;
+  background: #050b17;
+  color: #edf2f8;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.readerHeader {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #111a2a, #0b1321);
+}
+
+.headerInner {
+  max-width: 1210px;
+  margin: 0 auto;
+  padding: 20px 24px;
+}
+
+.breadcrumbs {
+  display: flex;
+  gap: 9px;
+  color: #627188;
+  font-size: 13px;
+}
+
+.breadcrumbs a {
+  color: #7d8ba0;
+  text-decoration: none;
+}
+
+.headerInner h1 {
+  margin: 17px 0 8px;
+  font-size: 23px;
+}
+
+.headerInner p {
+  margin: 0;
+  color: #3d82f6;
+  font-weight: 800;
+}
+
+.chapterNav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(17, 26, 42, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.bottomChapterNav {
+  margin: 34px auto 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(17, 26, 42, 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.navInner {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.homeButton,
+.arrowButton {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: white;
+  text-decoration: none;
+}
+
+.homeButton {
+  background: #263449;
+  color: #a9b5c8;
+}
+
+.arrowButton {
+  background: linear-gradient(180deg, #347df4, #2462d4);
+  font-size: 30px;
+}
+
+.inactive {
+  opacity: 0.35;
+}
+
+.select {
+  width: min(290px, 45vw);
+  height: 42px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: #101a2b;
+  color: white;
+  font-weight: 700;
+}
+
+.viewer {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 28px 12px 80px;
+}
+
+.viewer > p {
+  margin: 0 0 28px;
+  color: #65758c;
+  text-align: center;
+}
+
+.empty {
+  padding: 60px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #8290a5;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .headerInner {
+    padding: 14px 12px;
+  }
+
+  .breadcrumbs {
+    overflow: hidden;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .headerInner h1 {
+    margin-top: 12px;
+    font-size: 18px;
+  }
+
+  .navInner {
+    min-height: 58px;
+    padding: 0 7px;
+    gap: 5px;
+  }
+
+  .homeButton,
+  .arrowButton {
+    width: 37px;
+    height: 37px;
+  }
+
+  .select {
+    min-width: 0;
+    height: 37px;
+    flex: 1;
+  }
+
+  .viewer {
+    padding: 20px 0 50px;
+  }
+
+  .bottomChapterNav {
+    margin: 24px 10px 0;
+    border-radius: 12px;
+  }
+}

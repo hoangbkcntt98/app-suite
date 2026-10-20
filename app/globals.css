@@ -1,0 +1,100 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap");
+.hub-shell {
+  --ink: #1f2825;
+  --muted: #6f7873;
+  --paper: #f3f2ec;
+  --green: #c8d96b;
+}
+
+.hub-shell, .hub-shell * { box-sizing: border-box; }
+
+.hub-shell,.hub-shell { min-height: 100%; }
+
+.hub-shell {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at 79% 9%, rgba(205, 218, 126, .22), transparent 30rem),
+    radial-gradient(ellipse at 4% 68%, rgba(224, 194, 158, .15), transparent 27rem),
+    var(--paper);
+  font-family: "DM Sans", sans-serif;
+}
+
+.hub-shell a { color: inherit; text-decoration: none; }
+
+.hub-shell .canvas { max-width: 1320px; padding: 0 6.2vw; margin: auto; }
+.hub-shell .topbar { height: 88px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(31, 40, 37, .12); }
+.hub-shell .wordmark { display: flex; align-items: center; gap: 11px; font: 500 12px "DM Mono", monospace; letter-spacing: .14em; }
+.hub-shell .wordmark-star { display: grid; place-items: center; width: 29px; height: 29px; background: var(--ink); color: var(--green); font: 600 15px "Playfair Display", serif; }
+.hub-shell .topbar-note,.hub-shell  .eyebrow,.hub-shell  .section-heading > span,.hub-shell  .card-topline,.hub-shell  .footer { font: 10px "DM Mono", monospace; letter-spacing: .12em; }
+.hub-shell .topbar-note { color: var(--muted); display: flex; align-items: center; gap: 9px; }
+.hub-shell .live-dot { width: 7px; height: 7px; background: #8ea92b; border-radius: 50%; box-shadow: 0 0 0 4px rgba(142, 169, 43, .13); }
+
+.hub-shell .intro { min-height: 374px; display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden; }
+.hub-shell .intro-copy { padding: 48px 0 52px; z-index: 1; }
+.hub-shell .eyebrow { color: #758344; margin: 0 0 22px; }
+.hub-shell h1 { font-size: clamp(58px, 7vw, 91px); line-height: .93; letter-spacing: -.065em; margin: 0; font-weight: 500; }
+.hub-shell h1 em { font-family: "Playfair Display", serif; font-weight: 500; letter-spacing: -.06em; }
+.hub-shell .intro-description { margin: 23px 0 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.hub-shell .orbit { width: 280px; height: 280px; position: absolute; right: 5%; top: 43px; border-radius: 50%; border: 1px solid rgba(31, 40, 37, .11); }
+.hub-shell .orbit::before,.hub-shell  .orbit::after { content: ""; position: absolute; inset: 24px; border: 1px solid rgba(31, 40, 37, .09); border-radius: 50%; }
+.hub-shell .orbit::after { inset: 61px; border-color: rgba(31, 40, 37, .08); }
+.hub-shell .orbit-core { position: absolute; z-index: 1; inset: 95px; border-radius: 50%; display: grid; place-items: center; background: #d8e39b; color: #53622c; font: italic 38px "Playfair Display", serif; box-shadow: 0 0 55px rgba(184, 202, 105, .3); }
+.hub-shell .orbit-label { position: absolute; z-index: 2; color: #667344; font: 9px "DM Mono", monospace; letter-spacing: .16em; }
+.hub-shell .orbit-label-a { top: 38px; left: 125px; }
+.hub-shell .orbit-label-b { bottom: 46px; left: 29px; }
+.hub-shell .orbit-label-c { bottom: 46px; right: 25px; }
+
+.hub-shell .apps-section { padding: 12px 0 73px; }
+.hub-shell .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 16px; }
+.hub-shell .section-heading h2 { font: 500 19px "Playfair Display", serif; margin: 0; }
+.hub-shell .section-heading > span { color: #89908a; font-size: 9px; }
+.hub-shell .app-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.hub-shell .app-card { min-height: 283px; display: flex; flex-direction: column; position: relative; overflow: hidden; padding: 20px 21px 18px; background: rgba(255,255,255,.46); border: 1px solid rgba(31,40,37,.11); transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease; animation: rise .55s both; }
+.hub-shell .app-card:nth-child(2) { animation-delay: .08s; }
+.hub-shell .app-card:nth-child(3) { animation-delay: .16s; }
+.hub-shell .app-card:hover { transform: translateY(-5px); border-color: rgba(31,40,37,.25); box-shadow: 0 16px 35px rgba(31,40,37,.08); }
+.hub-shell .card-topline { display: flex; justify-content: space-between; color: #838b84; font-size: 9px; }
+.hub-shell .card-arrow { font: 16px "DM Sans", sans-serif; color: #7b857d; }
+.hub-shell .app-mark { position: absolute; top: 52px; right: 30px; width: 62px; height: 62px; display: grid; place-items: center; border-radius: 50%; font-size: 26px; background: rgba(201, 215, 130, .3); color: #69783a; }
+.hub-shell .quest .app-mark { background: #e7d8bc; color: #8b6643; }
+.hub-shell .video .app-mark { background: #d4dfd7; color: #4d6956; font-size: 18px; }
+.hub-shell .card-copy { margin-top: auto; max-width: 88%; }
+.hub-shell .card-copy h3 { margin: 0 0 8px; font: 500 24px "Playfair Display", serif; letter-spacing: -.025em; }
+.hub-shell .card-copy p { max-width: 290px; min-height: 42px; color: var(--muted); font-size: 12px; line-height: 1.65; margin: 0; }
+.hub-shell .card-link { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(31,40,37,.12); margin-top: 15px; padding-top: 13px; font-size: 11px; font-weight: 600; }
+.hub-shell .card-link span { font-size: 16px; transition: transform .2s ease; }
+.hub-shell .card-link:hover span { transform: translateX(4px); }
+.hub-shell .footer { display: flex; justify-content: space-between; color: #929890; border-top: 1px solid rgba(31,40,37,.12); padding: 17px 0 23px; font-size: 9px; }
+.hub-shell .footer-mark { color: #697364; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 760px) {
+  .hub-shell .canvas { padding: 0 23px; }
+  .hub-shell .topbar { height: 70px; }
+  .hub-shell .topbar-note { font-size: 8px; }
+  .hub-shell .intro { min-height: 353px; align-items: flex-start; }
+  .hub-shell .intro-copy { padding-top: 60px; }
+  .hub-shell .orbit { width: 156px; height: 156px; right: -44px; top: 104px; opacity: .72; }
+  .hub-shell .orbit::before { inset: 15px; }
+  .hub-shell .orbit::after { inset: 34px; }
+  .hub-shell .orbit-core { inset: 55px; font-size: 22px; }
+  .hub-shell .orbit-label { font-size: 6px; }
+  .hub-shell .orbit-label-a { top: 21px; left: 68px; }
+  .hub-shell .orbit-label-b { bottom: 25px; left: 13px; }
+  .hub-shell .orbit-label-c { bottom: 25px; right: 12px; }
+  .hub-shell h1 { font-size: 59px; }
+  .hub-shell .intro-description { font-size: 12px; max-width: 250px; }
+  .hub-shell .desktop-break { display: none; }
+  .hub-shell .apps-section { padding-bottom: 43px; }
+  .hub-shell .app-grid { grid-template-columns: 1fr; gap: 10px; }
+  .hub-shell .app-card { min-height: 232px; padding: 17px 18px 16px; }
+  .hub-shell .card-copy { max-width: 79%; }
+  .hub-shell .card-copy h3 { font-size: 22px; }
+  .hub-shell .card-copy p { min-height: initial; }
+  .hub-shell .app-mark { width: 52px; height: 52px; top: 48px; right: 21px; }
+  .hub-shell .footer { font-size: 7px; letter-spacing: .08em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-shell, .hub-shell *,.hub-shell  *::before,.hub-shell  *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

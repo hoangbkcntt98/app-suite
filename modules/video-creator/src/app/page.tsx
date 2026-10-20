@@ -1,0 +1,29 @@
+import { appPath } from "@video/lib/paths";
+import Link from "next/link";
+import AppSwitcher from "@video/components/AppSwitcher";
+import DashboardControls from "@video/components/DashboardControls";
+import PipelineScheduleSettings from "@video/components/PipelineScheduleSettings";
+import QuotaScheduleSettings from "@video/components/QuotaScheduleSettings";
+import LogoutButton from "@video/components/LogoutButton";
+import RunHistory from "@video/components/RunHistory";
+import { getDashboard } from "@video/lib/dashboard";
+import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default async function Home() {
+  const dashboard = await getDashboard();
+  return <main className={styles.page}><header className={styles.header}><div className={styles.brand}><span className={styles.mark}>VC</span><div><strong>Video Creator</strong><small>JLPT N1 · Facebook Reels</small></div></div><nav className={styles.headerActions}><Link href={appPath("/patterns")}>Grammar Patterns</Link><Link href={appPath("/studio")}>Video Studio</Link><Link href={appPath("/word-creator")}>WordCreator</Link><Link href={appPath("/library")}>Library</Link><Link href={appPath("/quota")}>Codex Quota</Link><AppSwitcher /><LogoutButton /></nav></header>
+    <div className={styles.content}>
+      <DashboardControls patterns={dashboard.patterns}/>
+      <PipelineScheduleSettings mode="daily" />
+      <PipelineScheduleSettings mode="interval" />
+      <PipelineScheduleSettings mode="daily" kind="kanji" />
+      <PipelineScheduleSettings mode="interval" kind="kanji" />
+      <QuotaScheduleSettings />
+        {dashboard.warnings.length ? <aside className={styles.warning}>{dashboard.warnings.map((warning) => <p key={warning}>{warning}</p>)}</aside> : null}
+        <section className={styles.runSection}><div className={styles.sectionHeading}><div><p className="eyebrow">PIPELINE</p><h2>Run History</h2></div><span>{dashboard.patterns.length} patterns from grammar_patterns</span></div><RunHistory runs={dashboard.runs}/></section>
+      </div>
+  </main>;
+}

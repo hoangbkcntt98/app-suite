@@ -1,0 +1,3 @@
+ALTER TABLE manga_ai_bulk_jobs
+  ADD COLUMN IF NOT EXISTS provider TEXT,
+  ADD COLUMN IF NOT EXISTS model TEXT;

@@ -1,0 +1,57 @@
+{
+  "name": "app-suite",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3003",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p ${PORT:-3003}",
+    "lint": "eslint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1106.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "archiver": "^7.0.1",
+    "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
+    "date-fns": "^4.4.0",
+    "googleapis": "^174.0.1",
+    "jose": "^6.2.12",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.23.3",
+    "next": "^16.4.2",
+    "pg": "^8.22.0",
+    "prisma": "^7.8.0",
+    "puppeteer-core": "^24.43.1",
+    "react": "19.2.4",
+    "react-datepicker": "^9.1.0",
+    "react-dom": "19.2.4",
+    "sharp": "^0.35.1",
+    "web-push": "^3.6.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/archiver": "^8.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/busboy": "^1.5.4",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.2",
+    "postcss-selector-parser": "^7.1.7",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.0",
+    "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

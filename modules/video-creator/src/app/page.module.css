@@ -1,0 +1,280 @@
+.page {
+  min-height: 100vh;
+  background: radial-gradient(circle at 18% -10%, #193765 0, transparent 34%), #08111f;
+}
+
+.header {
+  min-height: 72px;
+  padding: 14px clamp(18px, 4vw, 68px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid #24354d;
+  background: rgba(8, 17, 31, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.brand strong {
+  display: block;
+  font-size: 17px;
+}
+
+.brand small {
+  color: #8fa4c2;
+  font-size: 12px;
+}
+
+.mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #06101e;
+  background: linear-gradient(135deg, #6de8be, #48aef6);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.headerActions > a {
+  min-height: 35px;
+  display: grid;
+  place-items: center;
+  padding: 0 14px;
+  border: 1px solid #3a5477;
+  border-radius: 8px;
+  color: #dcecff;
+  background: #0b1a2e;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.headerActions > a:hover {
+  border-color: #6de8be;
+  background: #143757;
+}
+
+.content {
+  width: min(1280px, calc(100% - 36px));
+  margin: 30px auto 70px;
+  display: grid;
+  gap: 20px;
+}
+
+.createPanel {
+  padding: clamp(22px, 4vw, 42px);
+  border: 1px solid #263b57;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(20, 38, 66, 0.95), rgba(11, 23, 42, 0.95));
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
+}
+
+.createPanel h1 {
+  margin: 4px 0 10px;
+  font-size: clamp(27px, 4vw, 43px);
+  letter-spacing: -0.04em;
+}
+
+.createPanel p {
+  color: #aebfd6;
+  max-width: 650px;
+  line-height: 1.55;
+}
+
+.createPanel .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.createPanel .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a8b8d0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.runSection {
+  padding: 23px;
+  border: 1px solid #263b57;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(20, 38, 66, 0.95), rgba(11, 23, 42, 0.95));
+}
+
+.schedulePanel {
+  padding: 23px;
+  border: 1px solid #263b57;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(20, 38, 66, 0.95), rgba(11, 23, 42, 0.95));
+}
+
+.scheduleDescription {
+  margin: -7px 0 18px;
+  color: #aebfd6;
+  font-size: 13px;
+}
+
+.scheduleFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.scheduleFields label:not(.scheduleToggle) {
+  display: grid;
+  align-items: start;
+  gap: 6px;
+  min-width: 170px;
+}
+
+.scheduleFields input[type="time"],
+.scheduleFields input[type="datetime-local"],
+.scheduleFields input[type="number"],
+.scheduleFields input[list],
+.scheduleFields select {
+  min-height: 40px;
+}
+
+.scheduleToggle {
+  min-height: 40px;
+  align-items: center;
+  color: #dcecff;
+}
+
+.scheduleEnabled,
+.scheduleDisabled {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scheduleEnabled {
+  color: #8cf0c8;
+  background: rgba(109, 232, 190, 0.12);
+}
+
+.scheduleDisabled {
+  color: #aebfd6;
+  background: rgba(143, 164, 194, 0.12);
+}
+
+.scheduleMeta,
+.scheduleSuccess,
+.scheduleError {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+
+.scheduleMeta {
+  color: #8fa4c2;
+}
+
+.scheduleSuccess {
+  color: #8cf0c8;
+}
+
+.scheduleError {
+  color: #ffb7ba;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 17px;
+}
+
+.sectionHeading h2 {
+  margin: 3px 0 0;
+  font-size: 21px;
+}
+
+.sectionHeading > span {
+  color: #8fa4c2;
+  font-size: 13px;
+}
+
+.warning {
+  padding: 10px 18px;
+  border: 1px solid #73522a;
+  border-radius: 18px;
+  color: #ffd99b;
+  background: #2d2417;
+}
+
+.warning p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.runMessage {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(109, 232, 190, 0.1);
+  color: #6de8be;
+  font-size: 13px;
+}
+
+@media (max-width: 740px) {
+  .header,
+  .headerActions,
+  .sectionHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  
+  .content {
+    width: min(100% - 24px, 1280px);
+    margin-top: 12px;
+  }
+  
+  .createPanel .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .createPanel {
+    padding: 17px;
+  }
+  
+  .runSection {
+    padding: 16px;
+  }
+
+  .schedulePanel {
+    padding: 16px;
+  }
+
+  .scheduleFields {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .scheduleFields label:not(.scheduleToggle),
+  .scheduleFields button {
+    width: 100%;
+  }
+}

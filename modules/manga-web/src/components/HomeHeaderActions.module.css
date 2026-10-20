@@ -1,0 +1,176 @@
+.actions {
+  min-width: 0;
+  margin-left: auto;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.desktopSearch,
+.mobileSearch {
+  position: relative;
+}
+
+.desktopSearch {
+  width: min(100%, 560px);
+  min-width: 260px;
+}
+
+.desktopSearch input,
+.mobileSearch input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8edf7;
+  outline: none;
+}
+
+.desktopSearch input {
+  height: 46px;
+  padding: 0 18px 0 44px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.desktopSearch svg,
+.mobileSearch svg {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: #8ea1c9;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.desktopProfile {
+  min-height: 36px;
+  padding: 0 6px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #c5cbe0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.desktopProfile button {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 95, 118, 0.44);
+  border-radius: 999px;
+  background: rgba(128, 25, 42, 0.18);
+  color: #ffabb8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.mobileActions,
+.mobileSearch,
+.mobileMenu {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .actions {
+    flex: 0 0 auto;
+  }
+
+  .desktopSearch,
+  .desktopProfile {
+    display: none;
+  }
+
+  .mobileActions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .iconButton {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #9aa7bd;
+    display: grid;
+    place-items: center;
+  }
+
+  .iconButton svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 1.8;
+  }
+
+  .mobileSearch,
+  .mobileMenu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 8px);
+    left: 12px;
+    right: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: #0c1425;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
+  }
+
+  .mobileSearch {
+    display: block;
+    padding: 10px;
+  }
+
+  .mobileSearch input {
+    height: 42px;
+    padding: 0 14px 0 42px;
+    border-radius: 9px;
+    font-size: 14px;
+  }
+
+  .mobileMenu {
+    display: grid;
+    padding: 8px;
+  }
+
+  .mobileMenu a {
+    padding: 12px 14px;
+    border-radius: 8px;
+    color: #d4dbea;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .mobileMenu a:first-child {
+    background: rgba(55, 105, 194, 0.18);
+    color: #93b7ff;
+  }
+
+  .mobileMenu button {
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(128, 25, 42, 0.18);
+    color: #ffabb8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    text-align: left;
+  }
+}

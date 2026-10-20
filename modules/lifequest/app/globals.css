@@ -1,0 +1,140 @@
+.lifequest-shell {
+  --background: #f8fafc;
+  --foreground: #172033;
+  --surface: #ffffff;
+  --surface-soft: #f1f7ff;
+  --line: #dce6f3;
+  --muted: #64748b;
+  --brand: #4f46e5;
+  --brand-strong: #4338ca;
+  --success: #059669;
+  --gold: #d97706;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+.lifequest-shell {
+  background:
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.2), transparent 32rem),
+    radial-gradient(circle at top right, rgba(79, 70, 229, 0.13), transparent 34rem),
+    linear-gradient(180deg, #fffdf7 0%, #f8fafc 42%, #eef6ff 100%);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+.lifequest-shell ::selection {
+  background: #fef3c7;
+  color: #111827;
+}
+
+/* Bright LifeQuest theme overrides for the existing utility-heavy UI. */
+.lifequest-shell .bg-slate-950 {
+  background-color: #f8fbff !important;
+}
+
+.lifequest-shell .bg-slate-900 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.lifequest-shell .bg-slate-800 {
+  background-color: #e8f0fb !important;
+}
+
+.lifequest-shell .bg-indigo-500 {
+  background-image: linear-gradient(135deg, #4f46e5, #0ea5e9) !important;
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.22);
+}
+
+.lifequest-shell .hover\:bg-indigo-400:hover {
+  background-image: linear-gradient(135deg, #4338ca, #0284c7) !important;
+  background-color: #4338ca !important;
+}
+
+.lifequest-shell .border-slate-800,.lifequest-shell 
+.border-slate-700 {
+  border-color: var(--line) !important;
+}
+
+.lifequest-shell .text-white {
+  color: var(--foreground) !important;
+}
+
+.lifequest-shell .text-slate-300,.lifequest-shell 
+.text-slate-400 {
+  color: var(--muted) !important;
+}
+
+.lifequest-shell .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.lifequest-shell .text-indigo-300,.lifequest-shell 
+.text-indigo-400 {
+  color: var(--brand) !important;
+}
+
+.lifequest-shell .text-red-300 {
+  color: #dc2626 !important;
+}
+
+.lifequest-shell .text-emerald-300 {
+  color: #047857 !important;
+}
+
+.lifequest-shell .bg-emerald-500\/10,.lifequest-shell 
+.bg-emerald-500\/20 {
+  background-color: #dcfce7 !important;
+}
+
+.lifequest-shell .border-emerald-500\/30 {
+  border-color: #86efac !important;
+}
+
+.lifequest-shell .bg-red-500\/10 {
+  background-color: #fee2e2 !important;
+}
+
+.lifequest-shell .border-red-500\/30 {
+  border-color: #fecaca !important;
+}
+
+.lifequest-shell .hover\:bg-slate-800:hover {
+  background-color: #eaf2ff !important;
+}
+
+.lifequest-shell .shadow-xl {
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12) !important;
+}
+
+.lifequest-shell .rounded-2xl,.lifequest-shell 
+.rounded-xl {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset;
+}
+
+.lifequest-shell .lifequest-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(79, 70, 229, 0.18);
+  border-top-color: #4f46e5;
+  border-radius: 9999px;
+  animation: lifequest-spin 0.75s linear infinite;
+}
+
+.lifequest-shell .lifequest-spinner.light {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+@keyframes lifequest-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

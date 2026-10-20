@@ -1,0 +1,423 @@
+.page {
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+  background:
+    radial-gradient(circle at top, rgba(48, 88, 160, 0.28), transparent 38%),
+    #080d18;
+  color: #eef3fb;
+}
+
+.inner {
+  width: min(980px, 100%);
+  margin: 0 auto;
+}
+
+.heading {
+  margin-bottom: 24px;
+}
+
+.heading h1 {
+  margin: 0 0 8px;
+  font-size: clamp(25px, 5vw, 38px);
+}
+
+.heading p {
+  margin: 0;
+  color: #8d9bb0;
+}
+
+.form {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(14, 22, 38, 0.92);
+}
+
+.formHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.formHeading label {
+  font-weight: 800;
+}
+
+.modeBadge {
+  padding: 5px 9px;
+  border: 1px solid rgba(81, 145, 249, 0.35);
+  border-radius: 999px;
+  background: rgba(43, 103, 205, 0.15);
+  color: #9fc3ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.form textarea {
+  width: 100%;
+  min-height: 280px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 11px;
+  outline: none;
+  background: #080f1d;
+  color: #dce8fa;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.form textarea:focus {
+  border-color: #4b8ff8;
+}
+
+.formFooter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.formFooter button,
+.crawlButton,
+.viewButton,
+.configButton,
+.editButton,
+.cloneButton,
+.storageToggle,
+.deleteButton {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(76, 143, 248, 0.45);
+  border-radius: 9px;
+  background: rgba(39, 102, 207, 0.22);
+  color: #a9caff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.formFooter button:disabled,
+.crawlButton:disabled,
+.editButton:disabled,
+.storageToggle:has(input:disabled),
+.deleteButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.message {
+  color: #99a8be;
+  font-size: 13px;
+}
+
+.sites {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.siteCard {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(13, 21, 36, 0.9);
+}
+
+.siteTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.siteName {
+  min-width: 0;
+  display: block;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.siteInfo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.siteInfo span {
+  color: #8190a7;
+  font-size: 12px;
+}
+
+.siteInfo .error {
+  color: #ff8fa3;
+  font-weight: 700;
+  white-space: pre-wrap;
+}
+
+.viewButton[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.siteActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.iconButton {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.iconButton svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.viewButton {
+  display: grid;
+  place-items: center;
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9e1ed;
+  text-decoration: none;
+}
+
+.configButton {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9e1ed;
+}
+
+.editButton {
+  border-color: rgba(74, 197, 144, 0.35);
+  background: rgba(35, 139, 94, 0.14);
+  color: #80ddb0;
+}
+
+.cloneButton {
+  border-color: rgba(174, 122, 255, 0.4);
+  background: rgba(105, 62, 178, 0.16);
+  color: #c2a0ff;
+}
+
+.storageToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: rgba(245, 181, 83, 0.38);
+  background: rgba(166, 102, 25, 0.14);
+  color: #ffd08a;
+}
+
+.storageToggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: #f0ad4e;
+}
+
+.storagePathEditor {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.storagePathEditor input {
+  min-height: 40px;
+  width: 260px;
+  box-sizing: border-box;
+  padding: 0 11px;
+  border: 1px solid rgba(245, 181, 83, 0.3);
+  border-radius: 9px;
+  outline: none;
+  background: #080f1d;
+  color: #f4e2bd;
+  font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.storagePathEditor input:focus {
+  border-color: rgba(245, 181, 83, 0.75);
+  box-shadow: 0 0 0 3px rgba(245, 181, 83, 0.12);
+}
+
+.storagePathEditor button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(245, 181, 83, 0.38);
+  border-radius: 9px;
+  background: rgba(166, 102, 25, 0.14);
+  color: #ffd08a;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.storagePathEditor input:disabled,
+.storagePathEditor button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.deleteButton {
+  border-color: rgba(255, 91, 112, 0.45);
+  background: rgba(128, 25, 42, 0.22);
+  color: #ff9aaa;
+}
+
+.empty {
+  padding: 28px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  color: #8492a8;
+  text-align: center;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 14, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.modal {
+  width: min(440px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(174, 122, 255, 0.38);
+  border-radius: 15px;
+  background: #0d1626;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.modal h2 {
+  margin: 0 0 8px;
+  font-size: 21px;
+}
+
+.modal p {
+  margin: 0 0 18px;
+  color: #99a8be;
+  font-size: 14px;
+}
+
+.modal label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.modal input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid rgba(174, 122, 255, 0.5);
+  border-radius: 9px;
+  outline: none;
+  background: #080f1d;
+  color: #eef3fb;
+  font: 14px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.modal input:focus {
+  border-color: #b787ff;
+  box-shadow: 0 0 0 3px rgba(174, 122, 255, 0.14);
+}
+
+.modalError {
+  display: block;
+  margin-top: 8px;
+  color: #ff8fa3;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.modalActions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d9e1ed;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.modalActions button:last-child {
+  border-color: rgba(174, 122, 255, 0.5);
+  background: rgba(105, 62, 178, 0.25);
+  color: #cfb6ff;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 24px 12px 50px;
+  }
+
+  .form {
+    padding: 13px;
+  }
+
+  .form textarea {
+    min-height: 230px;
+  }
+
+  .siteCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .siteTopRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .siteActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    justify-content: stretch;
+  }
+
+  .iconButton {
+    width: auto;
+  }
+
+  .storagePathEditor {
+    grid-column: 1 / -1;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .storagePathEditor input {
+    width: 100%;
+  }
+}

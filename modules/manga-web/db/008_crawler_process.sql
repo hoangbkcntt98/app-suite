@@ -1,0 +1,5 @@
+ALTER TABLE crawler_sites
+ADD COLUMN IF NOT EXISTS crawler_pid INTEGER;
+
+ALTER TABLE crawler_sites
+ADD COLUMN IF NOT EXISTS crawl_started_at TIMESTAMPTZ;

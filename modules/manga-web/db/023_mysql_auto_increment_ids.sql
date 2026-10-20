@@ -1,0 +1,23 @@
+-- MySQL-only repair for schemas imported from PostgreSQL.
+-- BIGSERIAL values may be imported as plain BIGINT, which prevents inserts
+-- that rely on generated IDs in the crawler and web app.
+SET FOREIGN_KEY_CHECKS = 0;
+
+ALTER TABLE app_flashcards
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE app_phrase_ai_cache
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE app_users
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE chapter_images
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE crawler_sites
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE manga_ai_responses
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE manga_chapters
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+ALTER TABLE manga_titles
+  MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT;
+
+SET FOREIGN_KEY_CHECKS = 1;

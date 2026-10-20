@@ -1,0 +1,36 @@
+.manga-web-shell, .manga-web-shell * { box-sizing: border-box; }
+
+.manga-web-shell,.manga-web-shell { margin: 0; min-height: 100%; }
+
+.manga-web-shell .theme-toggle {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: #dce7f8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.manga-web-shell .theme-toggle:hover { background: rgba(255,255,255,.12); }
+
+html[data-theme="light"] .manga-web-shell { background: #f8fafd; color: #1c2738; }
+html[data-theme="light"] .manga-web-shell .theme-toggle { border-color: #d4dce8; background: #fff; color: #40516a; }
+html[data-theme="light"] .manga-web-shell main[class*="page"] { background: #f8fafd !important; color: #1c2738 !important; }
+html[data-theme="light"] .manga-web-shell header[class*="header"] { background: rgba(255,255,255,.92) !important; border-color: #dfe6ef !important; }
+html[data-theme="light"] .manga-web-shell input,html[data-theme="light"] .manga-web-shell select { background: #fff !important; color: #1c2738 !important; border-color: #cbd6e4 !important; }
+html[data-theme="light"] .manga-web-shell [class*="mangaCard"],html[data-theme="light"] .manga-web-shell [class*="panel"],html[data-theme="light"] .manga-web-shell [class*="listToolbar"] { background: #fff !important; color: #1c2738 !important; border-color: #dce4ee !important; box-shadow: 0 6px 18px rgba(36,55,80,.07) !important; }
+html[data-theme="light"] .manga-web-shell [class*="mangaCard"] { border-radius: 10px !important; }
+html[data-theme="light"] .manga-web-shell [class*="listToolbar"] { background: linear-gradient(135deg, #ffffff 0%, #f6f9ff 100%) !important; border-color: #cddcf0 !important; box-shadow: 0 8px 22px rgba(52, 91, 140, .10) !important; }
+html[data-theme="light"] .manga-web-shell [class*="listToolbar"] [class*="siteSwitcher"],html[data-theme="light"] .manga-web-shell [class*="listToolbar"] [class*="controlGroup"] { color: #526985 !important; }
+html[data-theme="light"] .manga-web-shell [class*="listToolbar"] select { background: #f8fbff !important; border-color: #b9cde6 !important; color: #203c60 !important; box-shadow: inset 0 1px 2px rgba(41, 76, 116, .04) !important; }
+html[data-theme="light"] .manga-web-shell [class*="listToolbar"] [class*="toolbarLink"] { background: #eef4fc !important; border-color: #c5d7ec !important; color: #355b87 !important; }
+html[data-theme="light"] .manga-web-shell [class*="listToolbar"] [class*="toolbarLinkActive"] { background: #dcecff !important; border-color: #79a9df !important; color: #174f8d !important; }
+html[data-theme="light"] .manga-web-shell a { color: #245ca8; }
+html[data-theme="light"] .manga-web-shell nav a,html[data-theme="light"] .manga-web-shell [class*="desktopNav"] a { color: #40516a !important; }
+html[data-theme="light"] .manga-web-shell [class*="title"],html[data-theme="light"] .manga-web-shell h1,html[data-theme="light"] .manga-web-shell h2,html[data-theme="light"] .manga-web-shell h3 { color: #1c2738 !important; }
+html[data-theme="light"] .manga-web-shell [class*="mobileMenu"] { background: #fff !important; border-color: #dce4ee !important; }
+@media (max-width: 640px) { .manga-web-shell .theme-toggle { min-height: 32px; padding: 0 8px; } }

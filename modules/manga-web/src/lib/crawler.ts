@@ -13,10 +13,23 @@ const crawlerLog =
 export function spawnCrawler(args: string[]) {
   const logFd = openSync(crawlerLog, "a");
   try {
+    const databaseDialect =
+      process.env.MANGA_DB_DIALECT?.toLowerCase() === "mysql" ? "mysql" : "postgres";
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DB_HOST: process.env.DB_HOST || process.env.MANGA_DB_HOST,
+      DB_PORT:
+        process.env.DB_PORT ||
+        process.env.MANGA_DB_PORT ||
+        (databaseDialect === "mysql" ? "3306" : "5432"),
+      DB_NAME: process.env.DB_NAME || process.env.MANGA_DB_NAME,
+      DB_USER: process.env.DB_USER || process.env.MANGA_DB_USER,
+      DB_PASSWORD: process.env.DB_PASSWORD || process.env.MANGA_DB_PASSWORD,
+    };
     const child = spawn(crawlerPython, [crawlerScript, ...args], {
       cwd: dirname(crawlerScript),
       detached: true,
-      env: process.env,
+      env,
       stdio: ["ignore", logFd, logFd],
     });
 

@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     if (prompt.length > MAX_PROMPT) return Response.json({ error: `Prompt tối đa ${MAX_PROMPT} ký tự.` }, { status: 400 });
 
     const image = appConfig.pipelineConfig().image;
-    const endpoint = `${image.baseUrl.replace(/\/+$/, "")}/images/generations?response_format=binary`;
+    const endpoint = `${image.baseUrl.replace(/\/+$/, "")}/images/generations`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${image.apiKey}`, "content-type": "application/json" },

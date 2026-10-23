@@ -176,14 +176,12 @@ export default function FocusPage() {
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [selectedTrackUrl, setSelectedTrackUrl] = useState("");
   const [mode, setMode] = useState<TimerMode>("focus");
-  const [focusMinutes, setFocusMinutes] = useState(getInitialFocusMinutes);
+  const [focusMinutes, setFocusMinutes] = useState(TIMER_PRESETS.focus.minutes);
   const [secondsLeft, setSecondsLeft] = useState(focusMinutes * 60);
   const [running, setRunning] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [focusMode, setFocusMode] = useState(false);
-  const [pomodoroBackground, setPomodoroBackground] = useState(
-    getInitialFocusBackground
-  );
+  const [pomodoroBackground, setPomodoroBackground] = useState("");
   const [volume, setVolume] = useState(0.7);
   const [loop, setLoop] = useState(true);
   const [loadingTracks, setLoadingTracks] = useState(true);
@@ -262,6 +260,13 @@ export default function FocusPage() {
       setCompletingMission(false);
     }
   }, [completingMission, selectedMission?.title, selectedMissionId]);
+
+  useEffect(() => {
+    const savedMinutes = getInitialFocusMinutes();
+    setFocusMinutes(savedMinutes);
+    setSecondsLeft(savedMinutes * 60);
+    setPomodoroBackground(getInitialFocusBackground());
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -495,12 +500,24 @@ export default function FocusPage() {
         };
 
         xhr.onload = () => {
-          const data = JSON.parse(xhr.responseText || "null") as
+          let data:
             | { tracks?: MusicTrack[]; track?: MusicTrack; message?: string }
-            | null;
+            | null = null;
+          try {
+            data = JSON.parse(xhr.responseText || "null");
+          } catch {
+            // Reverse proxies may return HTML for request-size errors.
+          }
 
           if (xhr.status < 200 || xhr.status >= 300) {
-            reject(new Error(data?.message || "Upload failed."));
+            reject(
+              new Error(
+                data?.message ||
+                  (xhr.status === 413
+                    ? "Audio upload exceeds the server's 350MB limit."
+                    : "Upload failed.")
+              )
+            );
             return;
           }
 

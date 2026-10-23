@@ -14,12 +14,20 @@ function option(name, fallback) {
 }
 
 function browserExecutable() {
+  const playwrightCache = "/home/opc/.cache/ms-playwright";
+  const cachedChromium = (fs.existsSync(playwrightCache) ? fs.readdirSync(playwrightCache, { withFileTypes: true }) : [])
+    .filter((entry) => entry.isDirectory() && /^chromium-\d+$/.test(entry.name))
+    .sort((left, right) => Number(right.name.slice("chromium-".length)) - Number(left.name.slice("chromium-".length)))
+    .flatMap((entry) => [
+      path.join(playwrightCache, entry.name, "chrome-linux-arm64", "chrome"),
+      path.join(playwrightCache, entry.name, "chrome-linux", "chrome"),
+    ]);
   const candidates = [
     process.env.VIDEO_PUPPETEER_EXECUTABLE_PATH,
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
-    "/home/opc/.cache/ms-playwright/chromium-1243/chrome-linux-arm64/chrome",
+    ...cachedChromium,
   ].filter(Boolean);
   return candidates.find((candidate) => fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) || candidates[0];
 }
@@ -97,7 +105,7 @@ async function main() {
     throw new Error(`Không tìm thấy HTML: ${htmlPath}`);
   }
   if (!fs.statSync(browserExecutable(), { throwIfNoEntry: false })?.isFile()) {
-    throw new Error(`Không tìm thấy Chromium. Đặt PUPPETEER_EXECUTABLE_PATH hoặc cài Chromium: ${browserExecutable()}`);
+    throw new Error(`Không tìm thấy Chromium. Cài Chromium hoặc đặt VIDEO_PUPPETEER_EXECUTABLE_PATH tới binary: ${browserExecutable()}`);
   }
 
   fs.mkdirSync(path.dirname(videoPath), { recursive: true });
@@ -222,10 +230,10 @@ async function main() {
       "-i",
       path.join(frameDir, "frame-%06d.png"),
       ...overlays.flatMap((overlay) => ["-stream_loop", "-1", "-ignore_loop", "1", "-i", overlay.file]),
-      ...(() => { const { filterArgs } = overlayArguments(overlays); return filterArgs; })(),
       ...(questionAudio && fs.statSync(questionAudio, { throwIfNoEntry: false })?.isFile() 
         ? ["-i", questionAudio] 
         : []),
+      ...(() => { const { filterArgs } = overlayArguments(overlays); return filterArgs; })(),
       ...(() => { const { mapArgs } = overlayArguments(overlays); return mapArgs; })(),
       ...(questionAudio && fs.statSync(questionAudio, { throwIfNoEntry: false })?.isFile() 
         ? ["-map", `${overlays.length + 1}:a`, "-af", `apad=whole_dur=${(duration + highlightDuration).toFixed(3)}`] 

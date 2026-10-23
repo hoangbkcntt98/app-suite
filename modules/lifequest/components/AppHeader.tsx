@@ -28,28 +28,28 @@ export default function AppHeader({ title, subtitle }: AppHeaderProps) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
-    const [notificationSupported] = useState(
-        () =>
-            typeof window !== "undefined" &&
-            "serviceWorker" in navigator &&
-            "PushManager" in window &&
-            "Notification" in window
-    );
+    const [notificationSupported, setNotificationSupported] = useState(false);
     const [notificationSubscribed, setNotificationSubscribed] = useState(false);
     const [notificationLoading, setNotificationLoading] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
+        const supported =
+            "serviceWorker" in navigator &&
+            "PushManager" in window &&
+            "Notification" in window;
+        setNotificationSupported(supported);
+
         apiFetch<{ user: { role?: string } | null }>("/api/auth/me")
             .then((data) => setIsAdmin(data.user?.role === "ADMIN"))
             .catch(() => setIsAdmin(false));
 
-        if (!notificationSupported) return;
+        if (!supported) return;
 
         apiFetch<{ subscribed: boolean }>("/api/push/subscribe")
             .then((data) => setNotificationSubscribed(data.subscribed))
             .catch(() => setNotificationSubscribed(false));
-    }, [notificationSupported]);
+    }, []);
 
     async function handleLogout() {
         setLoggingOut(true);

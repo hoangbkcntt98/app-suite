@@ -165,7 +165,7 @@ export default function WordCreator() {
       </div>
       {sourcesError ? <p className={styles.error}>{sourcesError}</p> : null}
       <p className={styles.hint}>FPS mặc định 25. Bật tự động: chọn FPS khớp thời lượng frame GIF (tối đa 60); không có GIF giữ FPS đã nhập. Tắt để dùng FPS cố định. Card và log hiển thị FPS thực tế.</p>
-      <p className={styles.hint}>Nguồn: anki_ai_notes với note_type = AIKanjiWithImage. File lưu trong WORD_CREATOR_OUTPUT_DIR hoặc DATA_DIR/word-creator.</p>
+      <p className={styles.hint}>Nguồn: public.anki_kanji. File lưu trong WORD_CREATOR_OUTPUT_DIR hoặc DATA_DIR/word-creator.</p>
       {activeJobId ? <p className={styles.hint}>Video chạy nền. Có thể tải lại trang để xem tiến độ.</p> : null}
       {message ? <p role="status" className={job?.status === "failed" || job?.errors.length ? styles.error : styles.success}>{message}</p> : null}{error ? <p className={styles.error}>{error}</p> : null}
       <h3>Log tạo video</h3>

@@ -440,9 +440,9 @@ async function createAnswers(source: string, requiredVocabulary: string) {
 }
 
 async function readAnkiNotes(source?: string, limit = 100, scheduled = false, forceRecreate = false) {
-  const filters = ["note_type = 'AIKanjiWithImage'", "NULLIF(BTRIM(fields_json->>'RequiredVocabulary'), '') IS NOT NULL"];
+  const filters = ["NULLIF(BTRIM(a.\"RequiredVocabulary\"), '') IS NOT NULL"];
   const values: unknown[] = [];
-  let order = "source";
+  let order = 'a."Kanji"';
   if (scheduled) {
     // Anki and application data may live in different databases.
     const saved = await query(`SELECT source, required_vocabulary AS vocabulary, updated_at
@@ -450,19 +450,19 @@ async function readAnkiNotes(source?: string, limit = 100, scheduled = false, fo
     values.push(JSON.stringify(saved.rows));
     const previous = `SELECT saved.updated_at FROM jsonb_to_recordset($1::jsonb)
       AS saved(source text, vocabulary text, updated_at timestamptz)
-      WHERE saved.source = anki_ai_notes.source
-        AND saved.vocabulary = BTRIM(anki_ai_notes.fields_json->>'RequiredVocabulary')`;
-    if (forceRecreate) order = `(${previous}) ASC NULLS FIRST, source`;
+      WHERE saved.source = a."Kanji"
+        AND saved.vocabulary = BTRIM(a."RequiredVocabulary")`;
+    if (forceRecreate) order = `(${previous}) ASC NULLS FIRST, a."Kanji"`;
     else filters.push(`NOT EXISTS (${previous})`);
   }
   if (source?.trim()) {
     values.push(source.trim());
-    filters.push(`source = $${values.length}`);
+    filters.push(`a."Kanji" = $${values.length}`);
   }
   values.push(Math.min(Math.max(limit, 1), 500));
   const result = await getAnkiPool().query<AnkiNote>(
-    `SELECT anki_note_id, source, fields_json
-     FROM public.anki_ai_notes
+    `SELECT a.anki_note_id, a."Kanji" AS source, to_jsonb(a) AS fields_json
+     FROM public.anki_kanji a
      WHERE ${filters.join(" AND ")}
      ORDER BY ${order}
      LIMIT $${values.length}`,
@@ -478,13 +478,12 @@ export async function listWordCreatorSources(search = "", offset = 0) {
   const ankiDb = appConfig.ankiDatabaseUrl();
   // If anki uses same database, can join directly. Otherwise need separate queries.
   const result = await (ankiDb ? getAnkiPool() : db()).query<WordCreatorSource>(
-    `SELECT a.source, MIN(a.fields_json->>'RequiredVocabulary') AS vocabulary, COUNT(*)::integer AS note_count
-     FROM public.anki_ai_notes a
-     WHERE a.note_type = 'AIKanjiWithImage'
-       AND NULLIF(BTRIM(a.source), '') IS NOT NULL
-       AND NULLIF(BTRIM(a.fields_json->>'RequiredVocabulary'), '') IS NOT NULL
-       AND (a.source ILIKE $1 OR a.fields_json->>'RequiredVocabulary' ILIKE $1)
-     GROUP BY a.source ORDER BY a.source LIMIT 101 OFFSET $2`, [pattern, offset],
+    `SELECT a."Kanji" AS source, MIN(a."RequiredVocabulary") AS vocabulary, COUNT(*)::integer AS note_count
+     FROM public.anki_kanji a
+     WHERE NULLIF(BTRIM(a."Kanji"), '') IS NOT NULL
+       AND NULLIF(BTRIM(a."RequiredVocabulary"), '') IS NOT NULL
+       AND (a."Kanji" ILIKE $1 OR a."RequiredVocabulary" ILIKE $1)
+     GROUP BY a."Kanji" ORDER BY a."Kanji" LIMIT 101 OFFSET $2`, [pattern, offset],
   );
   // Fetch statuses separately from main DB
   const sources = result.rows.slice(0, 100);

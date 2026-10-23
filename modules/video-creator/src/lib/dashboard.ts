@@ -31,8 +31,16 @@ export async function getGrammarPatterns(): Promise<GrammarPattern[]> {
 export async function getDashboard() {
   const warnings: string[] = [];
   const [patterns, runs] = await Promise.all([
-    getGrammarPatterns().catch(() => { warnings.push("Không đọc được grammar_patterns. Kiểm tra PostgreSQL và VIDEO_DATABASE_URL."); return [] as GrammarPattern[]; }),
-    listRuns().catch(() => { warnings.push("Không đọc được lịch sử pipeline. Kiểm tra PostgreSQL và VIDEO_DATABASE_URL."); return [] as Run[]; }),
+    getGrammarPatterns().catch((error) => {
+      console.error("Video Creator: failed to load grammar_patterns", error);
+      warnings.push("Không đọc được grammar_patterns. Kiểm tra PostgreSQL và VIDEO_DATABASE_URL.");
+      return [] as GrammarPattern[];
+    }),
+    listRuns().catch((error) => {
+      console.error("Video Creator: failed to load pipeline history", error);
+      warnings.push("Không đọc được lịch sử pipeline. Kiểm tra PostgreSQL và VIDEO_DATABASE_URL.");
+      return [] as Run[];
+    }),
   ]);
   return { patterns, runs, warnings };
 }

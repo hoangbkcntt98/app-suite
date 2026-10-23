@@ -1,0 +1,43 @@
+{
+  "llm": {
+    "baseUrl": "http://100.103.240.83:20128/v1",
+    "apiKey": "sk-0bd002bde9d70975-qoqgua-6b554bc1",
+    "model": "video-creator",
+    "temperature": 0.7,
+    "maxTokens": 4000,
+    "timeout": 120
+  },
+  "image": {
+    "baseUrl": "http://100.103.240.83:20128/v1",
+    "apiKey": "sk-0bd002bde9d70975-qoqgua-6b554bc1",
+    "model": "cx/gpt-image-2.5",
+    "size": "1024x1024",
+    "timeout": 600
+  },
+  "facebook": {
+    "pageId": "1049787484892726",
+    "pageToken": "EAF6BCRmtSVIBSVyE6KfJ50sXufsWJZATZAKbRAz6yW5rNZBbjgSYo4MfyWfgGtfVRhNzXEHetD7LOR094SW7X8TR4FU5JZCEFzRjWotZANbwH1DmE6p4CgchX5PCpdMowptiWAW0ZCqNsjAkXZCEArpLABpIdpcPycGLMGCW0vcYe58uNznZBlO67NU1xvHsUWVYHYgd",
+    "autoPublish": false
+  },
+  "database": {
+    "url": "postgresql://hoangdo:Hoangdo%40123@openclaw:5432/openclaw"
+  },
+  "paths": {
+    "dataDir": "/var/web-data/video-creator",
+    "outputDir": "/var/web-data/video-creator/outputs",
+    "workDir": "/var/web-data/video-creator/work_dir",
+    "logDir": "/var/web-data/video-creator"
+  },
+  "pipeline": {
+    "forceRecreate": false,
+    "skipImageGeneration": false,
+    "skipAiCreateIfExists": false,
+    "skipCreateImageIfExists": true,
+    "skipPublish": true,
+    "logLevel": "INFO"
+  },
+  "tts": {
+    "provider": "edge",
+    "voice": "ja-JP-NanamiNeural"
+  }
+}

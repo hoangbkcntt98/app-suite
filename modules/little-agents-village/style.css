@@ -200,6 +200,21 @@
 .agents-village .timeline-item small { font: 8px "DM Mono", monospace; }
 .agents-village .timeline-item b { color: #cbd7dc; font-size: 9px; font-weight: 600; text-transform: capitalize; }
 .agents-village .timeline-item p { margin: 0; color: #8e9fa7; font-size: 9px; line-height: 1.45; }
+.agents-village .speech-bubble {
+  width: max-content;
+  max-width: 190px;
+  padding: 7px 9px;
+  border: 1px solid #d7c9b6;
+  border-radius: 9px;
+  background: #fffaf1;
+  box-shadow: 0 4px 14px #24313b30;
+  color: #35434a;
+  font: 600 11px/1.35 ui-sans-serif, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.agents-village .speech-bubble.error { border-color: #d9968c; background: #fff1ed; }
+.agents-village .speech-bubble.success { border-color: #9fc49e; background: #f2faef; }
 
 @media (max-width: 1080px) {
   .agents-village .workspace { grid-template-columns: 62px minmax(0, 1fr) 330px; }

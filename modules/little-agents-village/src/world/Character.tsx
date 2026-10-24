@@ -259,7 +259,7 @@ export function Character({ def, liveStatus }: { def: AgentDefinition; liveStatu
       {status === 'error' && <Text position={[0, 2.65, 0]} fontSize={0.16} color="#b9756c">! needs help</Text>}
       {liveStatus && <Text position={[0, 2.85, 0]} fontSize={0.12} color="#397b69">● live · {liveStatus}</Text>}
       {speechText && (
-        <Html position={[0, 2.9, 0]} center distanceFactor={9} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={[0, 2.9, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
           <div className={`speech-bubble ${speechTone}`}>{speechText}</div>
         </Html>
       )}

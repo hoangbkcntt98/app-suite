@@ -35,6 +35,17 @@ const apps = [
     mark: "▶",
     action: "Mở studio",
   },
+  {
+    id: "04",
+    name: "Little Agents Village",
+    type: "AGENT SIMULATION",
+    description:
+      "Quan sát đội agent tí hon phối hợp qua một sprint phần mềm mô phỏng.",
+    href: "/little-agents-village",
+    tone: "agents",
+    mark: "✿",
+    action: "Vào ngôi làng",
+  },
 ];
 
 export default function Home() {
@@ -53,7 +64,7 @@ export default function Home() {
 
       <section className="intro">
         <div className="intro-copy">
-          <p className="eyebrow">ONE WORKSPACE · THREE WORLDS</p>
+          <p className="eyebrow">ONE WORKSPACE · FOUR WORLDS</p>
           <h1>
             Mỗi thứ
             <br />
@@ -75,7 +86,7 @@ export default function Home() {
       <section className="apps-section" aria-labelledby="apps-heading">
         <div className="section-heading">
           <h2 id="apps-heading">Chọn điểm đến</h2>
-          <span>03 MODULES</span>
+          <span>04 MODULES</span>
         </div>
         <div className="app-grid">
           {apps.map((app) => (
@@ -89,16 +100,16 @@ export default function Home() {
                 <h3>{app.name}</h3>
                 <p>{app.description}</p>
               </div>
-          <Link href={app.href} className="card-link">
+              <Link href={app.href} className="card-link">
                 {app.action}<span aria-hidden="true">→</span>
-          </Link>
+              </Link>
             </article>
           ))}
         </div>
       </section>
 
       <footer className="footer">
-        <span>THREE TOOLS. ONE PLACE TO BEGIN.</span>
+        <span>FOUR TOOLS. ONE PLACE TO BEGIN.</span>
         <span className="footer-mark">NORTHSTAR / 2026</span>
       </footer>
     </main>

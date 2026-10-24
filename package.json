@@ -7,7 +7,6 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p ${PORT:-3003}",
     "lint": "eslint",
-    "test:agents": "tsx --test modules/little-agents-village/src/simulation/engine.test.ts modules/little-agents-village/src/server/TaskOrchestrator.test.ts modules/little-agents-village/src/server/BedrockProvider.smoke.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy"
   },
@@ -15,8 +14,6 @@
     "@aws-sdk/client-bedrock-runtime": "^3.1106.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "@react-three/drei": "^10.7.9",
-    "@react-three/fiber": "^9.8.2",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
@@ -34,7 +31,6 @@
     "react-datepicker": "^9.1.0",
     "react-dom": "19.2.4",
     "sharp": "^0.35.1",
-    "three": "^0.180.0",
     "web-push": "^3.6.7",
     "zod": "^4.4.3",
     "zustand": "^5.0.16"

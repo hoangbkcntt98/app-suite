@@ -1,6 +1,6 @@
 # App Suite
 
-One Next.js app for Manga Web, LifeQuest, Video Creator, and Little Agents Village.
+One Next.js app for Manga Web, LifeQuest, and Video Creator.
 
 ## Routes
 
@@ -8,10 +8,6 @@ One Next.js app for Manga Web, LifeQuest, Video Creator, and Little Agents Villa
 - `/manga-web` opens Manga Web.
 - `/lifequest` opens LifeQuest.
 - `/video-creator` opens Video Creator.
-- `/little-agents-village` opens Little Agents Village.
-
-Little Agents Village is a client-side simulation only. It makes no live AI
-calls and executes no generated code.
 
 Each module keeps its own routes, auth session, and database. Shared route names
 such as `/api/auth/login` remain isolated under module prefixes.

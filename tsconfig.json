@@ -34,9 +34,6 @@
       ],
       "@video/*": [
         "./modules/video-creator/src/*"
-      ],
-      "@agents/*": [
-        "./modules/little-agents-village/*"
       ]
     }
   },

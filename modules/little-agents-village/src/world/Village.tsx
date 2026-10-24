@@ -168,9 +168,10 @@ function Workstation({ x, z, accent, index, agentId }: { x: number; z: number; a
 const VillageGeometry = memo(function VillageGeometry() {
   return (
     <>
-      <RoundedBox args={[27, 0.35, 23]} radius={0.7} smoothness={4} position={[0, -0.22, 0]} receiveShadow castShadow>
+      <mesh position={[0, -0.07, 0]} receiveShadow>
+        <boxGeometry args={[27, 0.08, 23]} />
         <meshStandardMaterial color="#b9d4b2" roughness={0.96} />
-      </RoundedBox>
+      </mesh>
       <mesh position={[0, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[2, 20]} />
         <meshStandardMaterial color="#e8ddc7" roughness={1} />

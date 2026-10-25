@@ -17,7 +17,14 @@ const config = {
   password: process.env.MANGA_DB_PASSWORD,
 };
 
-const postgresPool = databaseDialect === "postgres" ? new PostgresPool(config) : null;
+const postgresSchema = process.env.MANGA_DB_SCHEMA?.trim() || "public";
+if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(postgresSchema)) {
+  throw new Error("MANGA_DB_SCHEMA is invalid.");
+}
+const postgresPool =
+  databaseDialect === "postgres"
+    ? new PostgresPool({ ...config, options: `-c search_path=${postgresSchema}` })
+    : null;
 const mysqlPool: MySqlPool | null =
   databaseDialect === "mysql"
     ? mysql.createPool({

@@ -11,6 +11,16 @@
   --gold: #d97706;
 }
 
+.lifequest-home {
+  position: relative;
+}
+
+.lifequest-home-switcher {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

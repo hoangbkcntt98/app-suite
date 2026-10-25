@@ -1,6 +1,7 @@
 "use client";
 
 import { appPath } from "@manga/lib/paths";
+import AppSelect from "@/components/AppSelect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -436,6 +437,9 @@ export default function SiteRegistry({
   return (
     <main className={styles.page}>
       <div className={styles.inner}>
+        <div className={styles.appSelect}>
+          <AppSelect current="manga-web" />
+        </div>
         <header className={styles.heading}>
           <h1>Manga crawler sites</h1>
           <p>サイト設定JSONを登録してからタイトル一覧を開いてください。</p>

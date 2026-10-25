@@ -12,6 +12,12 @@
   margin: 0 auto;
 }
 
+.appSelect {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
 .heading {
   margin-bottom: 24px;
 }

@@ -366,7 +366,8 @@ export async function finishKanjiGeneration(runId: number, result?: {
     await markWordCreatorStatus(result.source, result.requiredVocabulary, "video_generated").catch(() => {});
     await query(`UPDATE video_creator_runs SET after_run_publish = after_run_publish || $2::jsonb
       WHERE id = $1 AND after_run_publish IS NOT NULL`, [runId, JSON.stringify({
-      title: `${result.source} ${result.requiredVocabulary}`, caption: `WordCreator: ${result.requiredVocabulary}`,
+      title: `${result.source} ${result.requiredVocabulary}`,
+      caption: `${result.requiredVocabulary} #kanji #jlpt #n1 #japanese #日本語 #漢字`,
     })]);
     await fs.appendFile(run.log_path, `\nVideo ready: ${result.videoPath}\n`);
   }
@@ -460,7 +461,10 @@ async function finalizeResumedRun(run: Pick<Run, "id" | "log_path" | "action" | 
     } else if (outputVideo) await saveGeneratedVideoDetails(outputVideo).catch(() => {});
     await finishRun(run.id, "success", undefined, outputVideo);
   } else {
-    await finishRun(run.id, "failed", "Pipeline process ended during application restart.");
+    const error = /KeyboardInterrupt/.test(output)
+      ? "Pipeline bị ngắt (KeyboardInterrupt), có thể do server khởi động lại."
+      : "Pipeline đã dừng khi ứng dụng khởi động lại.";
+    await finishRun(run.id, "failed", error);
   }
   await publishAfterRun(run, outputVideo).catch(async (error) => {
     await fs.appendFile(run.log_path, `\nPost-run recovery error: ${error instanceof Error ? error.message : "Unknown error"}\n`);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AppSelect from "@/components/AppSelect";
 import { apiPath, appPath } from "@manga/lib/paths";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./HomeHeaderActions.module.css";
@@ -60,6 +61,7 @@ export default function HomeHeaderActions({
       </form>
 
       <ThemeToggle />
+      <AppSelect current="manga-web" />
 
       <div className={styles.desktopProfile}>
         {username ? <span>{username}</span> : null}

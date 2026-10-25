@@ -1,9 +1,13 @@
 import { appPath } from "@lifequest/lib/paths";
+import AppSelect from "@/components/AppSelect";
 import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
+    <main className="lifequest-home min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
+      <div className="lifequest-home-switcher">
+        <AppSelect current="lifequest" />
+      </div>
       <div className="max-w-xl text-center space-y-6">
         <div className="text-6xl">⚔️</div>
 

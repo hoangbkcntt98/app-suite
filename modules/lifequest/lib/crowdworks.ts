@@ -43,8 +43,13 @@ export function getCrowdworksPool() {
   const globalWithPool = globalThis as GlobalWithCrowdworksPool;
 
   if (!globalWithPool.crowdworksPool) {
+    const schema = process.env.LIFEQUEST_CROWDWORKS_SCHEMA?.trim() || "public";
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
+      throw new Error("LIFEQUEST_CROWDWORKS_SCHEMA is invalid.");
+    }
     globalWithPool.crowdworksPool = new Pool({
       connectionString: getConnectionString(),
+      options: `-c search_path=${schema}`,
       max: 5,
     });
   }

@@ -7,7 +7,17 @@ let pool: Pool | undefined;
 let schemaPromise: Promise<void> | undefined;
 
 export function db() {
-  if (!pool) pool = new Pool({ connectionString: appConfig.databaseUrl(), max: 5 });
+  if (!pool) {
+    const schema = process.env.VIDEO_DATABASE_SCHEMA?.trim() || "public";
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
+      throw new Error("VIDEO_DATABASE_SCHEMA is invalid.");
+    }
+    pool = new Pool({
+      connectionString: appConfig.databaseUrl(),
+      options: `-c search_path=${schema}`,
+      max: 5,
+    });
+  }
   return pool;
 }
 

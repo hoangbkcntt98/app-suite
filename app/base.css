@@ -1,1 +1,34 @@
 @import "tailwindcss";
+
+.workspace-app-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  color: #8b96a9;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.workspace-app-select select {
+  min-height: 34px;
+  padding: 0 28px 0 11px;
+  border: 1px solid rgba(127, 145, 168, .28);
+  border-radius: 9px;
+  appearance: auto;
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-app-select select:focus-visible {
+  outline: 2px solid #8da2c4;
+  outline-offset: 2px;
+}
+
+.workspace-app-select option {
+  background: #172033;
+  color: #f4f6fb;
+}

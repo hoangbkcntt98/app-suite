@@ -15,16 +15,18 @@ such as `/api/auth/login` remain isolated under module prefixes.
 ## Setup
 
 1. Copy `.env.example` to `.env.local`; fill database credentials and required secrets.
-2. Keep `MANGA_DB_*`, `LIFEQUEST_DATABASE_URL`, and `VIDEO_DATABASE_URL` pointed
-   at their separate existing databases.
+2. Point module connections at `app_suite_db`; use `MANGA_DB_SCHEMA=manga_db`,
+   `LIFEQUEST_DATABASE_URL?schema=lifequest_db`, and
+   `VIDEO_DATABASE_SCHEMA=openclaw` to select each module's schema.
 3. Keep `LIFEQUEST_UPLOAD_ROOT` pointed at existing LifeQuest music uploads.
    Upload data stays outside this app.
 4. Install dependencies with `npm install`.
 5. Run `npm run db:generate`, `npm run lint`, and `npm run dev`.
 
-LifeQuest Prisma commands use `LIFEQUEST_DATABASE_URL`. Video Creator database
-schema is in `modules/video-creator/db`; apply its SQL migrations to
-`VIDEO_DATABASE_URL` separately. Manga Web uses `MANGA_DB_*`.
+LifeQuest Prisma commands use `LIFEQUEST_DATABASE_URL`. Video Creator tables
+live in the `openclaw` schema; apply SQL migrations from
+`modules/video-creator/db` to `VIDEO_DATABASE_URL`. Manga Web uses
+`MANGA_DB_*`; Anki tables use the `anki` schema.
 
 Video Creator requires `VIDEO_APP_AUTH_USERNAME`, `VIDEO_APP_AUTH_PASSWORD`,
 and `VIDEO_APP_AUTH_SECRET`. Its `/video-creator` pages and API routes require

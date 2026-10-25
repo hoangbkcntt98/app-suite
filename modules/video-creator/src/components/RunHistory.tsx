@@ -16,6 +16,12 @@ function formatRunName(run: Run) {
   return run.pattern_name ? `${run.pattern_name} (#${run.pattern_id})` : run.action === "publish" ? "Facebook upload" : "Pipeline next pattern";
 }
 
+function formatRunStatus(status: Run["status"]) {
+  if (status === "running") return "Đang chạy";
+  if (status === "success") return "Thành công";
+  return "Thất bại";
+}
+
 export default function RunHistory({ runs }: { runs: Run[] }) {
   const [logs, setLogs] = useState<Record<number, LogState>>({});
   const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set());
@@ -168,7 +174,7 @@ export default function RunHistory({ runs }: { runs: Run[] }) {
         return (
           <article className={styles.run} key={run.id}>
             <div className={styles.summary} onClick={() => toggleRun(run.id, run.output_video)}>
-              <span className={`${styles.status} ${styles[run.status]}`}>{run.status}</span>
+              <span className={`${styles.status} ${styles[run.status]}`}>{formatRunStatus(run.status)}</span>
               <div className={styles.summaryContent}>
                 <strong>#{run.id} · {run.action}</strong>
                 <p>{formatRunName(run)}</p>

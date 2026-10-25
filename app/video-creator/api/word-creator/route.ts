@@ -34,15 +34,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => null) as { limit?: unknown; source?: unknown; durationSeconds?: unknown; fps?: unknown; autoFps?: unknown } | null;
+    const body = await request.json().catch(() => null) as { sources?: unknown; durationSeconds?: unknown; fps?: unknown; autoFps?: unknown } | null;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ error: "Body phải là JSON object." }, { status: 400 });
     }
-    const limit = body.limit === undefined ? 10 : Number(body.limit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-      return NextResponse.json({ error: "limit phải từ 1 đến 500." }, { status: 400 });
+    if (!Array.isArray(body.sources) || body.sources.length === 0 || body.sources.length > 100
+      || body.sources.some((source) => typeof source !== "string" || !source.trim())) {
+      return NextResponse.json({ error: "Chọn từ 1 đến 100 Kanji trước khi tạo video." }, { status: 400 });
     }
-    const source = typeof body.source === "string" ? body.source.trim() : undefined;
+    const sources = Array.from(new Set((body.sources as string[]).map((source) => source.trim())));
     const durationSeconds = body.durationSeconds === undefined ? undefined : Number(body.durationSeconds);
     if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 300)) {
       return NextResponse.json({ error: "durationSeconds phải lớn hơn 0 và không quá 300 giây." }, { status: 400 });
@@ -53,9 +53,11 @@ export async function POST(request: NextRequest) {
     }
     const autoFps = body.autoFps ?? true;
     if (typeof autoFps !== "boolean") return NextResponse.json({ error: "autoFps phải là boolean." }, { status: 400 });
-    const job = await enqueueWordCreator({ limit, source, durationSeconds, fps, autoFps });
+    const job = await enqueueWordCreator({ sources, durationSeconds, fps, autoFps, forceRecreate: true });
     return NextResponse.json({ job }, { status: 202, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Không tạo được WordCreator." }, { status: 500 });
+    const code = (error as { code?: string }).code;
+    const status = code === "WORD_CREATOR_BUSY" ? 409 : 500;
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Không tạo được WordCreator." }, { status });
   }
 }

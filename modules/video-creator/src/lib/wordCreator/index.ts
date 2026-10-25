@@ -49,11 +49,20 @@ export type WordCreatorResult = {
 };
 
 export type WordCreatorOptions = {
-  limit?: number; source?: string; durationSeconds?: number; fps?: number; autoFps?: boolean;
+  sources?: string[]; durationSeconds?: number; fps?: number; autoFps?: boolean;
   scheduled?: boolean; forceRecreate?: boolean; pipelineRunId?: number;
 };
 export type WordCreatorLogger = (message: string, level?: "info" | "error", source?: string) => Promise<void>;
-export type WordCreatorSource = { source: string; vocabulary: string; note_count: number; status: string };
+export type WordCreatorSource = {
+  source: string;
+  vocabulary: string;
+  note_count: number;
+  status: string;
+  video_path: string | null;
+  updated_at: string | null;
+  facebook_video_id: string | null;
+  youtube_video_id: string | null;
+};
 export type WordCreatorProgress = {
   total: number;
   processed: number;
@@ -439,7 +448,9 @@ async function createAnswers(source: string, requiredVocabulary: string) {
   }
 }
 
-async function readAnkiNotes(source?: string, limit = 100, scheduled = false, forceRecreate = false) {
+async function readAnkiNotes(sources: string[], scheduled = false, forceRecreate = false) {
+  const selectedSources = Array.from(new Set(sources.map((source) => source.trim()).filter(Boolean)));
+  if (!selectedSources.length) throw new Error("Chọn Kanji cần tạo trước khi chạy WordCreator.");
   const filters = ["NULLIF(BTRIM(a.\"RequiredVocabulary\"), '') IS NOT NULL"];
   const values: unknown[] = [];
   let order = 'a."Kanji"';
@@ -455,17 +466,14 @@ async function readAnkiNotes(source?: string, limit = 100, scheduled = false, fo
     if (forceRecreate) order = `(${previous}) ASC NULLS FIRST, a."Kanji"`;
     else filters.push(`NOT EXISTS (${previous})`);
   }
-  if (source?.trim()) {
-    values.push(source.trim());
-    filters.push(`a."Kanji" = $${values.length}`);
-  }
-  values.push(Math.min(Math.max(limit, 1), 500));
+  values.push(selectedSources);
+  filters.push(`a."Kanji" = ANY($${values.length}::text[])`);
   const result = await getAnkiPool().query<AnkiNote>(
     `SELECT a.anki_note_id, a."Kanji" AS source, to_jsonb(a) AS fields_json
      FROM public.anki_kanji a
      WHERE ${filters.join(" AND ")}
      ORDER BY ${order}
-     LIMIT $${values.length}`,
+     `,
     values,
   );
   return result.rows;
@@ -486,14 +494,59 @@ export async function listWordCreatorSources(search = "", offset = 0) {
      GROUP BY a."Kanji" ORDER BY a."Kanji" LIMIT 101 OFFSET $2`, [pattern, offset],
   );
   // Fetch statuses separately from main DB
-  const sources = result.rows.slice(0, 100);
+  const sources: WordCreatorSource[] = result.rows.slice(0, 100).map((source) => ({
+    ...source,
+    status: "",
+    video_path: null,
+    updated_at: null,
+    facebook_video_id: null,
+    youtube_video_id: null,
+  }));
   if (sources.length > 0) {
-    const statusRows = await query<{ source: string; status: string }>(
-      `SELECT source, status FROM word_creator_questions WHERE source = ANY($1::text[])`,
+    const statusRows = await query<{
+      source: string;
+      status: string | null;
+      video_path: string | null;
+      updated_at: string | null;
+      facebook_video_id: string | null;
+      youtube_video_id: string | null;
+    }>(
+      `SELECT latest.source, latest.status, latest.video_path, latest.updated_at,
+              facebook.facebook_video_id, youtube.youtube_video_id
+       FROM (
+         SELECT DISTINCT ON (source) source, status, video_path, updated_at::text AS updated_at
+         FROM word_creator_questions WHERE source = ANY($1::text[])
+         ORDER BY source, (video_path IS NOT NULL) DESC, updated_at DESC
+       ) latest
+       LEFT JOIN LATERAL (
+         SELECT videos.facebook_video_id
+         FROM word_creator_questions questions
+         JOIN video_creator_videos videos ON videos.relative_path = questions.video_path
+         WHERE questions.source = latest.source
+           AND NULLIF(BTRIM(videos.facebook_video_id), '') IS NOT NULL
+           AND videos.published_at IS NOT NULL
+         ORDER BY questions.updated_at DESC LIMIT 1
+       ) facebook ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT videos.youtube_video_id
+         FROM word_creator_questions questions
+         JOIN video_creator_videos videos ON videos.relative_path = questions.video_path
+         WHERE questions.source = latest.source
+           AND NULLIF(BTRIM(videos.youtube_video_id), '') IS NOT NULL
+           AND videos.youtube_uploaded_at IS NOT NULL
+         ORDER BY questions.updated_at DESC LIMIT 1
+       ) youtube ON TRUE`,
       [sources.map(s => s.source)]
     );
-    const statusMap = new Map(statusRows.rows.map(r => [r.source, r.status]));
-    for (const s of sources) s.status = statusMap.get(s.source) || '';
+    const statusMap = new Map(statusRows.rows.map(r => [r.source, r]));
+    for (const s of sources) {
+      const record = statusMap.get(s.source);
+      s.status = record?.status || '';
+      s.video_path = record?.video_path || null;
+      s.updated_at = record?.updated_at || null;
+      s.facebook_video_id = record?.facebook_video_id || null;
+      s.youtube_video_id = record?.youtube_video_id || null;
+    }
   }
   return { sources, hasMore: result.rows.length > 100 };
 }
@@ -531,10 +584,15 @@ export async function generateWordCreator(
 ) {
   const fps = options.fps ?? 25;
   const autoFps = options.autoFps ?? true;
+  const sources = Array.isArray(options.sources) ? options.sources : [];
+  if (!sources.length || sources.some((source) => typeof source !== "string" || !source.trim())) {
+    throw new Error("Chọn Kanji cần tạo trước khi chạy WordCreator.");
+  }
   if (!Number.isInteger(fps) || fps < 1 || fps > 60) {
     throw new Error("FPS phải là số nguyên từ 1 đến 60.");
   }
-  await log(`Chuẩn bị: ${options.source || "tự động chọn Kanji"}, ${options.limit ?? 100} record, ${fps} FPS.`);
+  const selected = Array.from(new Set(sources.map((source) => source.trim())));
+  await log(`Chuẩn bị: ${selected.length} Kanji được chọn${options.forceRecreate ? " (force create)" : ""}, ${fps} FPS.`);
   await ensureWordCreatorSchema();
   const template = await fs.readFile(path.join(__dirname, "template", "template.html"), "utf8");
   const outputDir = path.resolve(appConfig.wordCreatorOutputDir());
@@ -544,7 +602,7 @@ export async function generateWordCreator(
     throw new Error("durationSeconds phải lớn hơn 0 và không quá 300 giây.");
   }
   await log("Đang đọc Kanji từ database Anki.");
-  const rows = await readAnkiNotes(options.source, options.limit ?? 100, options.scheduled, options.forceRecreate);
+  const rows = await readAnkiNotes(selected, options.scheduled, options.forceRecreate);
   await log(`Tìm thấy ${rows.length} record; thời lượng ${durationSeconds}s/video.`);
   const results: WordCreatorResult[] = [];
   const errors: Array<{ source: string; error: string }> = [];

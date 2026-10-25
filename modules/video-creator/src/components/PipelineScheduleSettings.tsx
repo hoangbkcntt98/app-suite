@@ -82,6 +82,10 @@ export default function PipelineScheduleSettings({ mode, kind = "grammar" }: { m
   }, [endpoint]);
 
   async function save() {
+    if (kind === "kanji" && !source.trim()) {
+      setError("Chọn Kanji cụ thể cho lịch tạo video.");
+      return;
+    }
     if (kind === "kanji" && (!Number.isFinite(Number(durationSeconds)) || Number(durationSeconds) <= 0 ||
         Number(durationSeconds) > 300 || !Number.isInteger(Number(fps)) || Number(fps) < 1 || Number(fps) > 60)) {
       setError("Kanji: duration must be greater than 0 and at most 300 seconds; FPS must be 1–60.");
@@ -205,8 +209,8 @@ export default function PipelineScheduleSettings({ mode, kind = "grammar" }: { m
           <datalist id={`schedule-timezones-${panelId}`}>{timezoneOptions.map((option) => <option value={option} key={option} />)}</datalist>
         </label>
         {kind === "kanji" ? <>
-          <label>Kanji source (optional)
-            <input value={source} maxLength={500} onChange={(event) => setSource(event.target.value)} disabled={busy} placeholder="Auto-select from Anki" />
+          <label>Kanji source (required)
+            <input value={source} maxLength={500} onChange={(event) => setSource(event.target.value)} disabled={busy} required placeholder="Select one Kanji explicitly" />
           </label>
           <label>Video duration (seconds)
             <input type="number" min="0.1" max="300" step="0.1" value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)} disabled={busy} />
@@ -218,7 +222,7 @@ export default function PipelineScheduleSettings({ mode, kind = "grammar" }: { m
             <input type="checkbox" checked={autoFps} onChange={(event) => setAutoFps(event.target.checked)} disabled={busy} />
             Auto FPS matching GIF
           </label>
-          <p className={styles.scheduleDescription}>Selects Kanji without a generated video from Anki. Force recreate includes existing videos, oldest first. If none remain, the batch stops without uploading.</p>
+          <p className={styles.scheduleDescription}>Creates videos only for this explicitly selected Kanji. No automatic Kanji selection.</p>
         </> : null}
         {mode === "interval" ? <p className={styles.scheduleDescription}>
           Start time uses the timezone above, not the server timezone. For example: 4 videos every 5 hours from 12/09/2026 15:00:00.

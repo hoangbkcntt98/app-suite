@@ -64,7 +64,12 @@ async function gifDelays(file) {
 }
 
 function overlayArguments(overlays) {
-  if (!overlays.length) return { filterArgs: ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"], mapArgs: [] };
+  if (!overlays.length) {
+    return {
+      filterArgs: ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"],
+      mapArgs: ["-map", "0:v:0"],
+    };
+  }
   const filters = ["[0:v]setpts=PTS-STARTPTS[bg0]"];
   overlays.forEach(({ x, y, width, height, fit }, i) => {
     if (![x, y, width, height].every(Number.isInteger) || width < 1 || height < 1) throw new Error("Kích thước GIF không hợp lệ.");
@@ -255,9 +260,21 @@ async function main() {
       "+faststart",
       "-t",
       (duration + highlightDuration).toFixed(3),
-      videoPath,
       "-frames:v", String(frameCount),
+      videoPath,
     ], { maxBuffer: 12 * 1024 * 1024 });
+    const probe = await execFileAsync(process.env.VIDEO_FFPROBE_PATH || "ffprobe", [
+      "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type,width,height",
+      "-of", "json", videoPath,
+    ], { maxBuffer: 1024 * 1024, timeout: 60_000 });
+    const streams = JSON.parse(probe.stdout).streams;
+    if (!Array.isArray(streams) || streams.length === 0 || streams[0].codec_type !== "video"
+      || streams[0].width !== 1080 || streams[0].height !== 1920) {
+      throw new Error("FFmpeg không tạo được video stream 1080×1920.");
+    }
+  } catch (error) {
+    fs.rmSync(videoPath, { force: true });
+    throw error;
   } finally {
     await browser?.close().catch(() => undefined);
     fs.rmSync(frameDir, { recursive: true, force: true });

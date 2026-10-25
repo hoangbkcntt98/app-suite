@@ -6,7 +6,7 @@ import { validateYouTubePublishSettings, youtubeConfiguration } from "@video/lib
 export type PipelineSchedule = {
   id: number;
   kind: "grammar" | "kanji";
-  kanjiOptions: { source?: string; durationSeconds: number; fps: number; autoFps: boolean };
+  kanjiOptions: { source: string; durationSeconds: number; fps: number; autoFps: boolean };
   enabled: boolean;
   mode: "daily" | "interval";
   runTime: string;
@@ -165,10 +165,10 @@ export function validateKanjiScheduleOptions(value: unknown): PipelineSchedule["
   const autoFps = input.autoFps === undefined ? true : input.autoFps;
   if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 300 ||
       typeof fps !== "number" || !Number.isInteger(fps) || fps < 1 || fps > 60 || typeof autoFps !== "boolean" ||
-      (input.source !== undefined && (typeof input.source !== "string" || input.source.length > 500))) {
-    throw new Error("Kanji: duration must be greater than 0 and at most 300 seconds, FPS 1–60, autoFps boolean, source at most 500 characters.");
+      typeof input.source !== "string" || !input.source.trim() || input.source.length > 500) {
+    throw new Error("Kanji: choose a source, duration must be greater than 0 and at most 300 seconds, FPS 1–60, autoFps boolean.");
   }
-  return { durationSeconds, fps, autoFps, ...(typeof input.source === "string" && input.source.trim() ? { source: input.source.trim() } : {}) };
+  return { durationSeconds, fps, autoFps, source: input.source.trim() };
 }
 
 function scheduleId(mode: unknown, kind: unknown = "grammar") {
@@ -206,7 +206,9 @@ export async function updatePipelineSchedule(input: {
 }) {
   const mode = validateScheduleMode(input.mode === undefined ? "daily" : input.mode);
   const kind = validateScheduleKind(input.kind === undefined ? "grammar" : input.kind);
-  const kanji = validateKanjiScheduleOptions(kind === "kanji" ? input.kanjiOptions ?? {} : {});
+  const kanji = kind === "kanji"
+    ? validateKanjiScheduleOptions(input.kanjiOptions ?? {})
+    : { source: "", durationSeconds: 10, fps: 25, autoFps: true };
   const runTime = validateTime(input.runTime);
   const timezone = validateTimezone(input.timezone);
   const interval = mode === "interval" ? validateIntervalSettings(input) : null;

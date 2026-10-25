@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WordCreatorJob } from "@video/lib/wordCreator/jobs";
-import type { WordCreatorSource, WordCreatorQuestion as Question } from "@video/lib/wordCreator/index";
+import type { WordCreatorSource } from "@video/lib/wordCreator/index";
 import KanjiList from "./KanjiList";
 import styles from "./WordCreator.module.css";
 
@@ -23,28 +23,28 @@ async function readJson<T>(response: Response) {
 
 async function loadQuestions(signal?: AbortSignal) {
   const response = await fetch(`${basePath}/api/word-creator`, { cache: "no-store", signal });
-  const body = await readJson<{ questions?: Question[]; job?: WordCreatorJob | null; error?: string }>(response);
+  const body = await readJson<{ job?: WordCreatorJob | null; error?: string }>(response);
   if (!response.ok) throw new Error(body.error || "Không đọc được danh sách.");
   return body;
 }
 
 export default function WordCreator() {
-  const [limit, setLimit] = useState("10");
   const [durationSeconds, setDurationSeconds] = useState("10");
   const [fps, setFps] = useState("25");
   const [autoFps, setAutoFps] = useState(true);
-  const [source, setSource] = useState("");
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [sourceSearch, setSourceSearch] = useState("");
   const [sourceOffset, setSourceOffset] = useState(0);
   const [sources, setSources] = useState<WordCreatorSource[]>([]);
   const [hasMoreSources, setHasMoreSources] = useState(false);
+  const [sourceRefresh, setSourceRefresh] = useState(0);
   const [sourcesError, setSourcesError] = useState("");
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<WordCreatorJob | null>(null);
   const [error, setError] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   const activeJobId = job && (job.status === "queued" || job.status === "running") ? job.id : null;
   const busy = loading || submitting || activeJobId !== null;
@@ -59,7 +59,6 @@ export default function WordCreator() {
     const controller = new AbortController();
     void loadQuestions(controller.signal).then((body) => {
       if (controller.signal.aborted) return;
-      setQuestions(body.questions || []);
       setJob(body.job || null);
     }).catch((err) => {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Không đọc được danh sách.");
@@ -88,7 +87,7 @@ export default function WordCreator() {
     };
     const timer = setTimeout(() => void load(), 300);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [sourceSearch, sourceOffset]);
+  }, [sourceSearch, sourceOffset, sourceRefresh]);
 
   useEffect(() => {
     if (!activeJobId) return;
@@ -109,10 +108,7 @@ export default function WordCreator() {
         setError("");
         const finished = body.job.status === "completed" || body.job.status === "failed";
         if (finished) {
-          // Refresh the list before changing job state (which cleans up this effect).
-          const snapshot = await loadQuestions(controller.signal);
-          if (controller.signal.aborted) return;
-          setQuestions(snapshot.questions || []);
+          setSourceRefresh((current) => current + 1);
           again = false;
         }
         setJob(body.job);
@@ -128,6 +124,10 @@ export default function WordCreator() {
   }, [activeJobId]);
 
   async function generate() {
+    if (selectedSources.length === 0) {
+      setError("Chọn ít nhất một Kanji trong danh sách.");
+      return;
+    }
     const frameRate = Number(fps);
     if (!Number.isInteger(frameRate) || frameRate < 1 || frameRate > 60) {
       setError("FPS phải là số nguyên từ 1 đến 60.");
@@ -135,32 +135,64 @@ export default function WordCreator() {
     }
     setSubmitting(true); setError("");
     try {
-      const response = await fetch(`${basePath}/api/word-creator`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: Number(limit), source: source.trim() || undefined, durationSeconds: Number(durationSeconds), fps: frameRate, autoFps }) });
+      const response = await fetch(`${basePath}/api/word-creator`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sources: selectedSources, durationSeconds: Number(durationSeconds), fps: frameRate, autoFps }),
+      });
       const body = await readJson<{ job?: WordCreatorJob; error?: string }>(response);
       if (!response.ok || !body.job) throw new Error(body.error || "Không tạo được WordCreator.");
       setJob(body.job);
+      setSelectedSources([]);
     } catch (err) { setError(err instanceof Error ? err.message : "Không tạo được WordCreator."); }
     finally { setSubmitting(false); }
+  }
+
+  function toggleSource(source: string) {
+    if (selectedSources.includes(source)) {
+      setSelectedSources(selectedSources.filter((item) => item !== source));
+      setError("");
+      return;
+    }
+    if (selectedSources.length >= 100) {
+      setError("Chọn tối đa 100 Kanji cho mỗi lần tạo.");
+      return;
+    }
+    setSelectedSources([...selectedSources, source]);
+    setError("");
+  }
+
+  function toggleCurrentPage() {
+    const pageSources = sources.map((item) => item.source);
+    const allSelected = pageSources.length > 0 && pageSources.every((item) => selectedSources.includes(item));
+    if (allSelected) {
+      setSelectedSources((current) => current.filter((item) => !pageSources.includes(item)));
+      setError("");
+      return;
+    }
+    const missing = pageSources.filter((item) => !selectedSources.includes(item));
+    if (selectedSources.length + missing.length > 100) {
+      setError("Chọn tối đa 100 Kanji cho mỗi lần tạo.");
+      return;
+    }
+    setSelectedSources((current) => [...current, ...missing]);
+    setError("");
   }
 
   return <div className={styles.layout}>
     <section className={styles.panel}>
       <div className={styles.fields}>
         <label>Tìm Kanji / từ vựng<input value={sourceSearch} onChange={(event) => { setSourceSearch(event.target.value); setSourceOffset(0); }} placeholder="遭, 遭う..." disabled={busy} /></label>
-        <label>Chọn Kanji<select value={source} onChange={(event) => setSource(event.target.value)} disabled={busy || sourcesLoading}>
-          <option value="">Tự động chọn</option>
-          {source && !sources.some((item) => item.source === source) ? <option value={source}>{source} (đã chọn)</option> : null}
-          {sources.map((item) => <option key={item.source} value={item.source}>{item.source} · {item.vocabulary} {item.status ? `(${item.status})` : ""}</option>)}
-        </select></label>
-        
         <label>Thời lượng video (giây)<input type="number" min="1" max="300" step="1" value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)} disabled={busy} /></label>
         <label>FPS<input type="number" min="1" max="60" step="1" value={fps} onChange={(event) => setFps(event.target.value)} disabled={busy} /></label>
         <label>Tự động khớp FPS theo GIF<input type="checkbox" checked={autoFps} onChange={(event) => setAutoFps(event.target.checked)} disabled={busy} /></label>
-        <button type="button" className="primary" onClick={() => void generate()} disabled={busy}>{busy ? "Đang tạo..." : "Generate WordCreator"}</button>
+        <button type="button" className="primary" onClick={() => void generate()} disabled={busy || selectedSources.length === 0}>
+          {busy ? "Đang tạo..." : `Force Create (${selectedSources.length})`}
+        </button>
       </div>
       <div className={styles.sourcePages}>
         <button type="button" disabled={busy || sourcesLoading || sourceOffset === 0} onClick={() => setSourceOffset(Math.max(0, sourceOffset - 100))}>Kanji trước</button>
-        <span>{sourcesLoading ? "Đang tải Kanji..." : `Trang ${sourceOffset / 100 + 1} · ${sources.length} Kanji`}</span>
+        <span>{sourcesLoading ? "Đang tải Kanji..." : `Trang ${sourceOffset / 100 + 1} · ${sources.length} Kanji · Đã chọn ${selectedSources.length}/100`}</span>
         <button type="button" disabled={busy || sourcesLoading || !hasMoreSources} onClick={() => setSourceOffset(sourceOffset + 100)}>Kanji tiếp</button>
       </div>
       {sourcesError ? <p className={styles.error}>{sourcesError}</p> : null}
@@ -168,18 +200,38 @@ export default function WordCreator() {
       <p className={styles.hint}>Nguồn: public.anki_kanji. File lưu trong WORD_CREATOR_OUTPUT_DIR hoặc DATA_DIR/word-creator.</p>
       {activeJobId ? <p className={styles.hint}>Video chạy nền. Có thể tải lại trang để xem tiến độ.</p> : null}
       {message ? <p role="status" className={job?.status === "failed" || job?.errors.length ? styles.error : styles.success}>{message}</p> : null}{error ? <p className={styles.error}>{error}</p> : null}
-      <h3>Log tạo video</h3>
-      <p className={styles.hint}>200 dòng gần nhất của tác vụ. Log lưu trong DB, cập nhật cùng tiến độ.</p>
-      <pre className={styles.log} role="log" aria-label="Log tạo video">{job?.logs?.length
-        ? job.logs.map((line) => `[${new Date(line.created_at).toLocaleString("vi-VN")}] ${line.level.toUpperCase()}${line.source ? ` [${line.source}]` : ""} ${line.message}`).join("\n")
-        : "Chưa có log cho tác vụ này."}</pre>
+      <button type="button" onClick={() => setShowLog(true)} disabled={!job?.logs?.length}>
+        Xem log {job?.logs?.length ? `(${job.logs.length})` : ""}
+      </button>
     </section>
     <section style={{ gridColumn: "1 / -1" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <h2 style={{ margin: 0, fontSize: "20px" }}>Kanji đã lưu</h2>
-        <span style={{ color: "#8fa4c2", fontSize: "13px" }}>{questions.length} mục</span>
+        <h2 style={{ margin: 0, fontSize: "20px" }}>Danh sách Kanji</h2>
+        <span style={{ color: "#8fa4c2", fontSize: "13px" }}>{sourcesLoading ? "Đang tải..." : `${sources.length} mục`}</span>
       </div>
-      <KanjiList questions={questions} />
+      <KanjiList
+        sources={sources}
+        selectedSources={selectedSources}
+        onToggleSource={toggleSource}
+        onTogglePage={toggleCurrentPage}
+        disabled={busy}
+      />
     </section>
+    {showLog ? (
+      <div className={styles.logBackdrop} role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setShowLog(false);
+      }}>
+        <section className={styles.logDialog} role="dialog" aria-modal="true" aria-labelledby="word-creator-log-title">
+          <header className={styles.logHeader}>
+            <h2 id="word-creator-log-title">Log tạo video</h2>
+            <button type="button" onClick={() => setShowLog(false)} aria-label="Đóng log">Đóng</button>
+          </header>
+          <p className={styles.hint}>200 dòng gần nhất · Log lưu trong DB, cập nhật cùng tiến độ.</p>
+          <pre className={styles.log} role="log" aria-label="Log tạo video">{job?.logs?.length
+            ? job.logs.map((line) => `[${new Date(line.created_at).toLocaleString("vi-VN")}] ${line.level.toUpperCase()}${line.source ? ` [${line.source}]` : ""} ${line.message}`).join("\n")
+            : "Chưa có log cho tác vụ này."}</pre>
+        </section>
+      </div>
+    ) : null}
   </div>;
 }

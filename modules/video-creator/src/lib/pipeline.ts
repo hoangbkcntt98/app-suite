@@ -331,23 +331,25 @@ export async function startKanjiGeneration(input: {
   publishToFacebook?: boolean;
   youtube?: YouTubePublishSettings;
   scheduleJobId: number;
-  kanjiOptions?: { source?: string; durationSeconds: number; fps: number; autoFps: boolean };
+  kanjiOptions?: { source: string; durationSeconds: number; fps: number; autoFps: boolean };
 }) {
   const { enqueueWordCreator, getWordCreatorJob } = await import("@video/lib/wordCreator/jobs");
+  const source = input.kanjiOptions?.source.trim();
+  if (!source) throw new Error("Chọn Kanji cụ thể cho lịch tạo WordCreator.");
   const active = await getWordCreatorJob();
   if (active && (active.status === "running" || active.status === "queued")) {
     throw Object.assign(new Error("Kanji worker is busy."), { code: "23505" });
   }
   const youtube = input.youtube ? validateYouTubePublishSettings(input.youtube) : undefined;
   if (youtube && !youtubeConfiguration().configured) throw new Error("Configure YouTube OAuth credentials in .env.local first.");
-  const run = await createRun("create_kanji", undefined, input.kanjiOptions?.source,
+  const run = await createRun("create_kanji", undefined, source,
     input.publishToFacebook || youtube ? { facebook: input.publishToFacebook, youtube } : undefined, input.scheduleJobId);
   try {
     // A scheduled Kanji uses the same durable worker/logs as a manual render.
     // Its run occupies the shared schedule/upload slot until completion.
     await query("UPDATE video_creator_runs SET runner_pid = $2 WHERE id = $1", [run.id, process.pid]);
     await fs.appendFile(run.log_path, "Scheduled Kanji generation queued.\n");
-    await enqueueWordCreator({ ...input.kanjiOptions, limit: 1, scheduled: true,
+    await enqueueWordCreator({ ...input.kanjiOptions, sources: [source], scheduled: true,
       forceRecreate: input.forceRecreate, pipelineRunId: run.id }, false);
   } catch (error) {
     await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not enqueue Kanji.");

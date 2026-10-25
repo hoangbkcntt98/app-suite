@@ -8,6 +8,12 @@
 .fields select { min-height:40px; max-width:360px; }
 .sourcePages { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:12px; color:#8fa4c2; font-size:12px; }
 .log { max-height:300px; overflow:auto; padding:14px; border:1px solid #29425f; border-radius:8px; background:#06111f; color:#b9d8f2; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.6; }
+.logBackdrop { position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:20px; background:rgba(2,8,18,.78); }
+.logDialog { width:min(900px,100%); max-height:min(80vh,800px); overflow:auto; padding:20px; border:1px solid #385578; border-radius:14px; background:#0b1a2e; box-shadow:0 24px 80px rgba(0,0,0,.45); }
+.logHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.logHeader h2 { margin:0; color:#dcecff; font-size:18px; }
+.logHeader button { min-height:36px; padding:0 12px; border:1px solid #385578; border-radius:7px; color:#dcecff; background:#10243c; cursor:pointer; }
+.logDialog .log { max-height:55vh; }
 @media (max-width:600px) {
   .table article { grid-template-columns:minmax(0, 1fr); }
   .video,.noVideo { max-width:240px; justify-self:center; }

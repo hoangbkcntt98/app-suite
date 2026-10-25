@@ -64,14 +64,23 @@ async function ensureJobsSchema() {
 const columns = "id, status, total, processed, generated, current_source, errors, error";
 
 export async function enqueueWordCreator(options: WordCreatorOptions, reuseActive = true) {
+  if (!Array.isArray(options.sources) || options.sources.length === 0
+    || options.sources.some((source) => typeof source !== "string" || !source.trim())) {
+    throw new Error("Chọn Kanji cần tạo trước khi chạy WordCreator.");
+  }
   await ensureJobsSchema();
-  // Return existing active job if a client retries after a lost HTTP response.
+  // Reuse retries only when they requested identical work; never substitute
+  // another queued/scheduled batch for an explicitly selected Kanji batch.
   const result = await query<WordCreatorJob>(`INSERT INTO word_creator_jobs (id, options)
     VALUES ($1, $2::jsonb)
     ON CONFLICT ((1)) WHERE status IN ('queued', 'running')
-    ${reuseActive ? "DO UPDATE SET updated_at = word_creator_jobs.updated_at" : "DO NOTHING"}
+    ${reuseActive
+      ? "DO UPDATE SET updated_at = word_creator_jobs.updated_at WHERE word_creator_jobs.options = EXCLUDED.options"
+      : "DO NOTHING"}
     RETURNING ${columns}`, [randomUUID(), JSON.stringify(options)]);
-  if (!result.rows[0]) throw Object.assign(new Error("Kanji worker is busy."), { code: "23505" });
+  if (!result.rows[0]) {
+    throw Object.assign(new Error("Đang có batch WordCreator khác chạy. Chờ batch kết thúc rồi gửi lựa chọn Kanji."), { code: "WORD_CREATOR_BUSY" });
+  }
   startWordCreatorWorker();
   return result.rows[0];
 }

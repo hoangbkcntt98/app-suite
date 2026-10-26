@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -100,6 +101,7 @@ class GrammarVideoJob:
         self.logger.info("Opening PostgreSQL pool (schema=%s).", self.schema)
         self.database = DatabasePool.create(self.config)
         self.logger.info("PostgreSQL pool ready.")
+        self.ensure_pattern_artifact_columns()
         self.data_dir = Path(get_job_setting(config, JOB_ID, "paths", "dataDir", "data"))
         self.output_dir = Path(get_job_setting(config, JOB_ID, "paths", "outputDir", "outputs"))
         self.date_dir = datetime.now().strftime("%Y%m%d")
@@ -107,6 +109,9 @@ class GrammarVideoJob:
         self.output_path = self.output_dir / self.date_dir
         self.pattern: dict[str, Any] | None = None
         self.safe_name = ""
+        self.run_id: int | None = None
+        self.run_log_path: Path | None = None
+        self.video_path: str | None = None
         self.logger.debug(
             "Job configured: schema=%s data_dir=%s output_dir=%s config=%s",
             self.schema,
@@ -115,14 +120,47 @@ class GrammarVideoJob:
             config.get("_config_path", "provided mapping"),
         )
 
+    def ensure_pattern_artifact_columns(self) -> None:
+        self.database.execute(
+            """ALTER TABLE openclaw.runs
+                ADD COLUMN IF NOT EXISTS is_completed BOOLEAN NOT NULL DEFAULT TRUE"""
+        )
+        self.database.execute(
+            f"""ALTER TABLE {self.schema_prefix}."grammar_patterns"
+                ADD COLUMN IF NOT EXISTS video_path TEXT,
+                ADD COLUMN IF NOT EXISTS image_path TEXT,
+                ADD COLUMN IF NOT EXISTS audio_path TEXT,
+                ADD COLUMN IF NOT EXISTS caption_path TEXT,
+                ADD COLUMN IF NOT EXISTS script_path TEXT,
+                ADD COLUMN IF NOT EXISTS facebook_video_id TEXT,
+                ADD COLUMN IF NOT EXISTS facebook_page_id TEXT,
+                ADD COLUMN IF NOT EXISTS facebook_published_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS facebook_error TEXT,
+                ADD COLUMN IF NOT EXISTS facebook_response JSONB,
+                ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ"""
+        )
+
     def claim_next_grammar(self) -> dict[str, Any] | None:
-        self.logger.info("Claiming next grammar pattern from schema %s.", self.schema)
+        self.logger.info(
+            "Selecting next grammar pattern without video_path from schema %s.",
+            self.schema,
+        )
         rows = self.database.execute(
-            f"SELECT * FROM {self.schema_prefix}.claim_next_grammar(%s)",
-            ("openclaw-n1-video-pipeline",),
+            f"""SELECT patterns.id AS pattern_id, patterns.pattern
+                FROM {self.schema_prefix}."grammar_patterns" AS patterns
+                WHERE NULLIF(BTRIM(patterns.video_path), '') IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM openclaw.runs AS runs
+                    WHERE runs.object_type = 'grammar_patterns'
+                      AND runs.object_id = patterns.id::text
+                      AND runs.is_completed = FALSE
+                  )
+                ORDER BY patterns.id
+                LIMIT 1"""
         )
         if not rows:
-            self.logger.info("No remaining unprocessed grammar patterns.")
+            self.logger.info("No grammar patterns without video_path.")
             return None
         row = rows[0]
         if not isinstance(row, dict):
@@ -210,6 +248,7 @@ class GrammarVideoJob:
             content_path,
         )
         self.save_learning_content(content)
+        self.update_pattern_artifacts(content_path=str(content_path))
         return content
 
     def save_learning_content(self, content: dict[str, Any]) -> None:
@@ -265,6 +304,10 @@ class GrammarVideoJob:
         )
         caption_path = self.data_path / f"{self.safe_name}_reel_caption.txt"
         caption_path.write_text(caption, encoding="utf-8")
+        self.update_pattern_artifacts(
+            script_path=[str(path) for path in paths],
+            caption_path=str(caption_path),
+        )
         self.logger.info("Wrote %s script parts and caption %s.", len(paths), caption_path)
         return paths
 
@@ -423,6 +466,13 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                 raise
             image_path.write_bytes(image_bytes)
             image_paths.append(image_path)
+            self.update_pattern_artifacts(
+                image_path=[str(path) for path in image_paths],
+                image_prompt_paths=[
+                    str(self.data_path / f"{self.safe_name}_image_prompt_part{part}.txt")
+                    for part in range(1, index + 1)
+                ],
+            )
             self.logger.info(
                 "Generated image asset %s/3 (%s bytes, %.2fs): %s",
                 index,
@@ -455,6 +505,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                 raise
             audio_path.write_bytes(audio_bytes)
             audio_paths.append(audio_path)
+            self.update_pattern_artifacts(audio_path=[str(path) for path in audio_paths])
             self.logger.info(
                 "Generated audio asset %s/3 (%s bytes, %.2fs): %s",
                 index,
@@ -462,6 +513,14 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                 perf_counter() - started_at,
                 audio_path,
             )
+        self.update_pattern_artifacts(
+            image_path=[str(path) for path in image_paths],
+            audio_path=[str(path) for path in audio_paths],
+            image_prompt_paths=[
+                str(self.data_path / f"{self.safe_name}_image_prompt_part{index}.txt")
+                for index in range(1, 4)
+            ],
+        )
         return image_paths, audio_paths
 
     def render_video(self, image_paths: list[Path], audio_paths: list[Path]) -> Path:
@@ -510,28 +569,164 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             concatenate_videos(segments, output, reencode=True)
         for segment in segments:
             segment.unlink(missing_ok=True)
+        self.update_pattern_artifacts(video_path=str(output))
         return output
 
-    def update_status(self, status: str) -> None:
+    def start_run(self) -> None:
         assert self.pattern is not None
-        self.logger.debug(
-            "Updating pattern_id=%s processing_status=%s.",
+        self.run_log_path = self.data_path / (
+            f"{self.safe_name}_{datetime.now().strftime('%H%M%S%f')}_{os.getpid()}_job.log"
+        )
+        handler = logging.FileHandler(self.run_log_path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+        ))
+        self.logger.addHandler(handler)
+        rows = self.database.execute(
+            """INSERT INTO openclaw.runs
+                (action, pattern_id, pattern_name, status, is_completed, runner_pid, started_at,
+                 object_type, object_id, log_path, metadata)
+               VALUES (%s, %s, %s, %s, FALSE, %s, NOW(), %s, %s, %s, %s::jsonb)
+               RETURNING id""",
+            (
+                "generate_pattern",
+                self.pattern["pattern_id"],
+                self.pattern["pattern"],
+                "starting",
+                os.getpid(),
+                "grammar_patterns",
+                str(self.pattern["pattern_id"]),
+                str(self.run_log_path),
+                json.dumps({"schema": self.schema}, ensure_ascii=False),
+            ),
+        )
+        if not rows or not isinstance(rows[0], dict) or not rows[0].get("id"):
+            raise RuntimeError("Could not create grammar job run record.")
+        self.run_id = int(rows[0]["id"])
+        self.logger.info(
+            "Created run #%s for grammar pattern_id=%s (pid=%s).",
+            self.run_id,
             self.pattern["pattern_id"],
+            os.getpid(),
+        )
+
+    def update_run_metadata(self, **values: Any) -> None:
+        if self.run_id is None or not values:
+            return
+        self.database.execute(
+            """UPDATE openclaw.runs
+               SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+               WHERE id = %s""",
+            (json.dumps(values, ensure_ascii=False), self.run_id),
+        )
+
+    def update_pattern_artifacts(self, **values: Any) -> None:
+        assert self.pattern is not None
+        pattern_columns = {
+            "video_path": "video_path",
+            "image_path": "image_path",
+            "audio_path": "audio_path",
+            "caption_path": "caption_path",
+            "script_path": "script_path",
+        }
+        updates = {column: values[key] for key, column in pattern_columns.items() if key in values}
+        if updates:
+            assignments = []
+            params: list[Any] = []
+            for column, value in updates.items():
+                if column in {"image_path", "audio_path", "script_path"}:
+                    assignments.append(f'"{column}" = %s')
+                    params.append(json.dumps(value, ensure_ascii=False))
+                else:
+                    assignments.append(f'"{column}" = %s')
+                    params.append(value)
+            assignments.append("updated_at = NOW()")
+            params.append(self.pattern["pattern_id"])
+            self.database.execute(
+                f"""UPDATE {self.schema_prefix}."grammar_patterns"
+                    SET {", ".join(assignments)}
+                    WHERE id = %s""",
+                params,
+            )
+
+        self.update_run_metadata(**values)
+        if "video_path" in values:
+            self.video_path = str(values["video_path"])
+            if self.run_id is not None:
+                self.database.execute(
+                    """UPDATE openclaw.runs SET output_video = %s WHERE id = %s""",
+                    (self.video_path, self.run_id),
+                )
+
+    def save_facebook_result(self, result: dict[str, Any]) -> None:
+        assert self.pattern is not None
+        response = result.get("response")
+        response = response if isinstance(response, dict) else {}
+        facebook_config = self.config.get("facebook", {})
+        page_id = facebook_config.get("page_id") if isinstance(facebook_config, dict) else None
+        db = DatabasePool.create(self.config)
+        try:
+            db.execute(
+                f"""UPDATE {self.schema_prefix}."grammar_patterns"
+                    SET facebook_video_id = COALESCE(%s, facebook_video_id),
+                        facebook_page_id = COALESCE(%s, facebook_page_id),
+                        facebook_published_at = CASE WHEN %s THEN NOW() ELSE facebook_published_at END,
+                        published_at = CASE WHEN %s THEN NOW() ELSE published_at END,
+                        facebook_error = %s,
+                        facebook_response = %s::jsonb,
+                        updated_at = NOW()
+                    WHERE id = %s""",
+                (
+                    str(response["id"]) if response.get("id") is not None else None,
+                    str(page_id) if page_id is not None else None,
+                    bool(result.get("success")),
+                    bool(result.get("success")),
+                    result.get("error"),
+                    json.dumps(response, ensure_ascii=False),
+                    self.pattern["pattern_id"],
+                ),
+            )
+            if self.run_id is not None:
+                db.execute(
+                    """UPDATE openclaw.runs
+                       SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                       WHERE id = %s""",
+                    (json.dumps({"facebook": result}, ensure_ascii=False), self.run_id),
+                )
+        finally:
+            db.close()
+
+    def update_status(self, status: str) -> None:
+        if self.run_id is None:
+            raise RuntimeError("Cannot update run status before creating run record.")
+        self.logger.debug(
+            "Updating run_id=%s status=%s.",
+            self.run_id,
             status,
         )
+        terminal = status in {"video_generated", "content_generated"}
         self.database.execute(
-            f'UPDATE {self.schema_prefix}."grammar_patterns" SET processing_status = %s, updated_at = NOW() WHERE id = %s',
-            (status, self.pattern["pattern_id"]),
+            """UPDATE openclaw.runs
+               SET status = %s,
+                   is_completed = CASE WHEN %s THEN TRUE ELSE FALSE END,
+                   ended_at = CASE WHEN %s THEN NOW() ELSE ended_at END,
+                   runner_pid = CASE WHEN %s THEN NULL ELSE runner_pid END,
+                   output_video = COALESCE(%s, output_video)
+               WHERE id = %s""",
+            (status, terminal, terminal, terminal, self.video_path, self.run_id),
         )
 
     def fail(self, error: str) -> None:
-        if self.pattern is None:
-            self.logger.debug("Skipping failure status update; no pattern was selected.")
+        if self.run_id is None:
+            self.logger.debug("Skipping failure status update; no run record was created.")
             return
-        self.logger.info("Marking pattern_id=%s as failed.", self.pattern["pattern_id"])
+        self.logger.info("Marking run_id=%s as failed.", self.run_id)
         self.database.execute(
-            f"SELECT {self.schema_prefix}.fail_grammar_pattern(p_pattern_id := %s, p_error_message := %s)",
-            (self.pattern["pattern_id"], error[:4000]),
+            """UPDATE openclaw.runs
+               SET status = 'failed', is_completed = TRUE, error = %s,
+                   ended_at = NOW(), runner_pid = NULL
+               WHERE id = %s""",
+            (error[:4000], self.run_id),
         )
 
     def run(self, pattern_id: int | None = None) -> Path:
@@ -539,6 +734,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         self.logger.info("Grammar video job started (pattern_id=%s).", pattern_id or "next")
         try:
             self.select_pattern(pattern_id)
+            self.start_run()
             content = self.generate_content()
             self.update_status("examples_generated")
             scripts = self.write_scripts(content)
@@ -548,6 +744,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             output = self.render_video(image_paths, audio_paths)
             if not output.is_file() or output.stat().st_size == 0:
                 raise RuntimeError("Generated video is missing or empty.")
+            self.video_path = str(output)
             self.update_status("video_generated")
             self.logger.info(
                 "Grammar video job completed in %.2fs: %s (%s bytes).",
@@ -591,6 +788,11 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             try:
                 response = FacebookTool(config=self.config).upload_video(video_path, **options)
                 results["facebook"] = {"success": True, "response": response}
+                try:
+                    self.save_facebook_result(results["facebook"])
+                except Exception as error:
+                    results["facebook"]["metadata_error"] = str(error)
+                    self.logger.exception("Could not persist Facebook result to grammar_patterns.")
                 self.logger.info(
                     "Facebook upload completed in %.2fs: %s",
                     perf_counter() - started_at,
@@ -599,6 +801,10 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             except Exception as error:
                 results["facebook"] = {"success": False, "error": str(error)}
                 self.logger.exception("Facebook upload failed.")
+                try:
+                    self.save_facebook_result(results["facebook"])
+                except Exception:
+                    self.logger.exception("Could not persist Facebook failure to grammar_patterns.")
 
         if youtube_payload is not None:
             options = {"title": title, "description": description, **youtube_payload}
@@ -658,13 +864,21 @@ def main() -> int:
         if args.generate_content_only:
             try:
                 job.select_pattern(args.pattern_id)
+                job.start_run()
                 content = job.generate_content()
+                job.update_status("content_generated")
                 print(json.dumps({
                     "success": True,
                     "pattern_id": job.pattern["pattern_id"] if job.pattern else None,
                     "content": content,
                 }, ensure_ascii=False))
                 return 0
+            except Exception as error:
+                try:
+                    job.fail(str(error))
+                except Exception:
+                    job.logger.exception("Could not mark content-only run as failed.")
+                raise
             finally:
                 job.database.close()
         output = job.run(args.pattern_id)

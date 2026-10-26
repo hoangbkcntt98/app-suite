@@ -3,7 +3,7 @@ import Link from "next/link";
 import AppSwitcher from "@video/components/AppSwitcher";
 import LogoutButton from "@video/components/LogoutButton";
 import DashboardControls from "@video/components/DashboardControls";
-import PipelineScheduleSettings from "@video/components/PipelineScheduleSettings";
+import AutomationSettingsButton from "@video/components/AutomationSettingsButton";
 import ResetPatternStatuses from "@video/components/ResetPatternStatuses";
 import BulkPublishSchedule from "@video/components/BulkPublishSchedule";
 import PatternFilters from "@video/components/PatternFilters";
@@ -54,8 +54,7 @@ export default async function PatternsPage() {
           <strong>{patterns.length} patterns</strong>
         </div>
         <DashboardControls patterns={patterns} />
-        <PipelineScheduleSettings mode="daily" />
-        <PipelineScheduleSettings mode="interval" />
+        <AutomationSettingsButton />
         {!error ? <ResetPatternStatuses /> : null}
         {!error ? <BulkPublishSchedule /> : null}
         {error ? (

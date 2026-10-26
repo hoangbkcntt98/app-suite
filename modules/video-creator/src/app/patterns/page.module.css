@@ -102,6 +102,93 @@
   white-space: nowrap;
 }
 
+.automationButton {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-bottom: 22px;
+  padding: 0 15px;
+  border: 1px solid #3a5477;
+  border-radius: 9px;
+  color: #dcecff;
+  background: #0b1a2e;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.automationButton:hover {
+  border-color: #6de8be;
+  background: #143757;
+}
+
+.automationButton svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+  flex: 0 0 auto;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 8, 16, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.automationModal {
+  width: min(980px, 100%);
+  max-height: min(90vh, 1000px);
+  overflow-y: auto;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid #3a5477;
+  border-radius: 16px;
+  background: #0b1a2e;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.modalHeader h2 {
+  margin: 4px 0 0;
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.modalClose {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid #3a5477;
+  border-radius: 8px;
+  color: #dcecff;
+  background: #102944;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modalClose:hover {
+  border-color: #6de8be;
+}
+
 .tableWrap {
   overflow: auto;
   border: 1px solid #29425f;
@@ -236,12 +323,15 @@
 }
 
 .facebookLink {
-  display: inline-grid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
   width: 34px;
   height: 28px;
-  place-items: center;
   margin-left: 7px;
   padding: 0;
+  line-height: 0;
   border: 1px solid #3a5477;
   border-radius: 8px;
   color: #a9d8ff;
@@ -250,6 +340,7 @@
 }
 
 .facebookLink svg {
+  display: block;
   width: 15px;
   height: 15px;
   fill: currentColor;
@@ -279,5 +370,13 @@
   
   .heading > strong {
     white-space: normal;
+  }
+
+  .modalBackdrop {
+    padding: 10px;
+  }
+
+  .automationModal {
+    max-height: 96vh;
   }
 }

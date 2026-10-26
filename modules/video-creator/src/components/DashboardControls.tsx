@@ -12,14 +12,13 @@ export default function DashboardControls({ patterns }: Props) {
   const [patternId, setPatternId] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [forceRecreate, setForceRecreate] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => router.refresh(), 8000);
     return () => window.clearInterval(timer);
   }, [router]);
 
-  async function start(action: "create_next" | "generate_pattern" | "generate_app_suite_job", force: boolean = false) {
+  async function start(action: "create_next" | "generate_pattern") {
     setBusy(true);
     setMessage("");
     try {
@@ -28,7 +27,7 @@ export default function DashboardControls({ patterns }: Props) {
       const response = await fetch(`${basePath}/api/runs`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, patternId: selected?.id, patternName: selected?.pattern, forceRecreate: force })
+        body: JSON.stringify({ action, patternId: selected?.id, patternName: selected?.pattern })
       });
       const body = await response.json() as { error?: string; run?: { id: number } };
       if (!response.ok) throw new Error(body.error || "Could not start pipeline.");
@@ -46,7 +45,7 @@ export default function DashboardControls({ patterns }: Props) {
       <div>
         <p className="eyebrow">JLPT N1 Pipeline</p>
         <h1>Create Japanese Learning Video</h1>
-        <p>LLM, images, TTS, and MP4 rendering. Video is not published automatically.</p>
+        <p>App-suite Python job handles content, images, TTS, and MP4 rendering. Publishing stays separate.</p>
       </div>
       
       <div className="actions">
@@ -72,22 +71,9 @@ export default function DashboardControls({ patterns }: Props) {
           ))}
         </select>
         
-        <button disabled={busy || !patterns.length} onClick={() => start("generate_pattern", forceRecreate)}>
+        <button disabled={busy || !patterns.length} onClick={() => start("generate_pattern")}>
           Recreate Selected Pattern
         </button>
-        <button disabled={busy || !patterns.length} onClick={() => start("generate_app_suite_job")}>
-          Run app-suite Python Job
-        </button>
-        
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={forceRecreate}
-            disabled={busy}
-            onChange={(e) => setForceRecreate(e.target.checked)}
-          />
-          Force Recreate
-        </label>
       </div>
       
       {message && <p className="runMessage" role="status">{message}</p>}

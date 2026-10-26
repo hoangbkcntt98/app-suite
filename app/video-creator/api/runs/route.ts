@@ -1,4 +1,4 @@
-import { startAppSuiteGrammarJob, startGeneration } from "@video/lib/pipeline";
+import { startGeneration } from "@video/lib/pipeline";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       return Response.json({ run }, { status: 202 });
     }
     if (body.action === "generate_app_suite_job") {
-      const run = await startAppSuiteGrammarJob({
+      const run = await startGeneration({
         patternId: Number(body.patternId),
         patternName: typeof body.patternName === "string" ? body.patternName : "",
       });

@@ -22,13 +22,6 @@ function safeLogName() {
   return new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
 }
 
-async function writeRuntimeConfig() {
-  const configPath = path.join(appConfig.appRoot(), ".pipeline-runtime.json");
-  await fs.writeFile(configPath, `${JSON.stringify(appConfig.pipelineConfig(), null, 2)}\n`, { mode: 0o600 });
-  await fs.chmod(configPath, 0o600);
-  return configPath;
-}
-
 async function createRun(action: RunAction, patternId?: number, patternName?: string, afterRunPublish?: AfterRunPublish, scheduleJobId?: number, publishJobId?: number) {
   await ensureVideoCreatorSchema();
   const logDir = path.join(appConfig.logDir(), "video-creator", "runs");
@@ -312,30 +305,6 @@ export async function startGeneration(input: {
   }
   const youtube = input.youtube ? validateYouTubePublishSettings(input.youtube) : undefined;
   if (youtube && !youtubeConfiguration().configured) throw new Error("Configure YouTube OAuth credentials in .env.local first.");
-  const configPath = await writeRuntimeConfig();
-  const run = await createRun(selected ? "generate_pattern" : "create_next", input.patternId, input.patternName?.trim(),
-    input.publishToFacebook || youtube ? { facebook: input.publishToFacebook, youtube } : undefined, input.scheduleJobId);
-  const args = ["grammar_pipeline_module/jlpt_n1_video_pipeline.py", "--config", configPath, "--step", "all", "--skip-publish"];
-  if (selected) args.push("--pattern-id", String(input.patternId), "--pattern-name", input.patternName!.trim());
-  if (input.forceRecreate) args.push("--force-recreate");
-  try {
-    await trackProcess(run, "python3", args);
-  } catch (error) {
-    await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start generation.");
-    await publishAfterRun(run);
-    throw error;
-  }
-  return run;
-}
-
-export async function startAppSuiteGrammarJob(input: {
-  patternId: number;
-  patternName: string;
-}) {
-  if (!Number.isInteger(input.patternId) || input.patternId <= 0 || !input.patternName.trim()) {
-    throw new Error("Chọn mẫu ngữ pháp hợp lệ trước khi chạy job.");
-  }
-
   const repositoryRoot = path.resolve(appConfig.appRoot(), "../..");
   const script = path.join(repositoryRoot, "jobs", "create_grammar_video_jobs.py");
   const configPath = path.join(repositoryRoot, "jobs", "app-tools", "config.json");
@@ -350,7 +319,6 @@ export async function startAppSuiteGrammarJob(input: {
     };
   };
   const grammarJobConfig = jobConfig.job_config?.create_grammar_video_jobs;
-
   const configuredDataDir = path.resolve(
     repositoryRoot,
     grammarJobConfig?.dataDir || jobConfig.paths?.dataDir || "data",
@@ -365,20 +333,21 @@ export async function startAppSuiteGrammarJob(input: {
   if (configuredOutputDir !== path.resolve(appConfig.outputDir())) {
     throw new Error("job_config.outputDir phải trùng VIDEO_OUTPUT_DIR để video xuất hiện trong thư viện.");
   }
-
   await fs.access(script);
   const virtualenvPython = path.join(repositoryRoot, "jobs", "app-tools", ".venv", "bin", "python");
   const python = process.env.VIDEO_GRAMMAR_JOB_PYTHON?.trim() ||
     (await fs.access(virtualenvPython).then(() => virtualenvPython).catch(() => "python3"));
   const schema = process.env.VIDEO_DATABASE_SCHEMA?.trim() || grammarJobConfig?.schema ||
     jobConfig.database?.schema || "openclaw";
-  const run = await createRun("generate_pattern", input.patternId, input.patternName.trim());
-  const args = [script, "--config", configPath, "--schema", schema, "--pattern-id", String(input.patternId)];
-
+  const run = await createRun(selected ? "generate_pattern" : "create_next", input.patternId, input.patternName?.trim(),
+    input.publishToFacebook || youtube ? { facebook: input.publishToFacebook, youtube } : undefined, input.scheduleJobId);
+  const args = [script, "--config", configPath, "--schema", schema];
+  if (selected) args.push("--pattern-id", String(input.patternId));
   try {
     await trackProcess(run, python, args, undefined, repositoryRoot);
   } catch (error) {
-    await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start grammar job.");
+    await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start generation.");
+    await publishAfterRun(run);
     throw error;
   }
   return run;

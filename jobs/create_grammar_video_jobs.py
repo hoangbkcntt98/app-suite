@@ -209,21 +209,32 @@ class GrammarVideoJob:
             len(content["examples"]),
             content_path,
         )
+        self.save_learning_content(content)
         return content
 
     def save_learning_content(self, content: dict[str, Any]) -> None:
         assert self.pattern is not None
         self.logger.info("Saving generated learning content for pattern_id=%s.", self.pattern["pattern_id"])
         self.database.execute(
-            f"""SELECT {self.schema_prefix}.save_generated_learning_content(
-                p_pattern_id := %s, p_meaning_ja := %s, p_meaning_vi := %s,
-                p_structure := %s, p_usage_note := %s, p_nuance := %s,
-                p_examples := %s::jsonb, p_generated_by := %s
-            )""",
+            f"""UPDATE {self.schema_prefix}."grammar_patterns"
+                SET meaning_ja = %s,
+                    meaning_vi = %s,
+                    structure = %s,
+                    usage_note = %s,
+                    nuance = %s,
+                    signal = %s,
+                    after_clause = %s,
+                    updated_at = NOW()
+                WHERE id = %s""",
             (
-                self.pattern["pattern_id"], content["meaning_ja"], content["meaning_vi"],
-                content["structure"], content["usage_note"], content["nuance"],
-                json.dumps(content["examples"], ensure_ascii=False), "create-grammar-video-job",
+                content["meaning_ja"],
+                content["meaning_vi"],
+                content["structure"],
+                content["usage_note"],
+                content["nuance"],
+                content["signal"],
+                content["after_clause"],
+                self.pattern["pattern_id"],
             ),
         )
         self.logger.info("Saved generated learning content for pattern_id=%s.", self.pattern["pattern_id"])
@@ -380,9 +391,10 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         ai_config = self.config.get("ai", {})
         image_config = ai_config.get("image", {}) if isinstance(ai_config, dict) else {}
         image_options = image_config.get("request_options", {}) if isinstance(image_config, dict) else {}
+        image_model = image_config.get("model", "unset") if isinstance(image_config, dict) else "unset"
         self.logger.info(
             "Image tool config: model=%s endpoint=%s size=%s",
-            image_config.get("model", "unset") if isinstance(image_config, dict) else "unset",
+            image_model,
             image_config.get("endpoint", "unset") if isinstance(image_config, dict) else "unset",
             image_options.get("size", "default") if isinstance(image_options, dict) else "default",
         )
@@ -402,7 +414,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                 len(prompt),
                 prompt_path,
             )
-            self.logger.info("Generating image asset %s/3.", index)
+            self.logger.info("Generating image asset %s/3 with model=%s.", index, image_model)
             started_at = perf_counter()
             try:
                 image_bytes = text_to_image(prompt, config=self.config)
@@ -528,7 +540,6 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         try:
             self.select_pattern(pattern_id)
             content = self.generate_content()
-            self.save_learning_content(content)
             self.update_status("examples_generated")
             scripts = self.write_scripts(content)
             self.update_status("script_generated")
@@ -615,6 +626,13 @@ def main() -> int:
     )
     parser.add_argument("--pattern-id", type=int, help="Process one grammar ID instead of claiming next")
     parser.add_argument(
+        "--generate_content",
+        "---generate_content",
+        dest="generate_content_only",
+        action="store_true",
+        help="Generate and save grammar content only; skip video generation",
+    )
+    parser.add_argument(
         "--facebook",
         type=json.loads,
         metavar="JSON",
@@ -631,10 +649,24 @@ def main() -> int:
     try:
         facebook_payload = _parse_publish_payload(args.facebook, "--facebook")
         youtube_payload = _parse_publish_payload(args.youtube, "--youtube")
+        if args.generate_content_only and args.pattern_id is None:
+            raise ValueError("--pattern-id is required with --generate_content.")
         config = load_config(args.config)
         job = GrammarVideoJob(config, schema=args.schema)
         if args.verbose:
             job.logger.setLevel(logging.DEBUG)
+        if args.generate_content_only:
+            try:
+                job.select_pattern(args.pattern_id)
+                content = job.generate_content()
+                print(json.dumps({
+                    "success": True,
+                    "pattern_id": job.pattern["pattern_id"] if job.pattern else None,
+                    "content": content,
+                }, ensure_ascii=False))
+                return 0
+            finally:
+                job.database.close()
         output = job.run(args.pattern_id)
         publish_results = job.publish_video(
             output,

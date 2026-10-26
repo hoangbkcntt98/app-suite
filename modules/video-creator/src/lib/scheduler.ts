@@ -181,7 +181,8 @@ export async function getPipelineSchedule(mode: PipelineSchedule["mode"] = "dail
   const result = await query<ScheduleRow>(`SELECT ${scheduleColumns},
     (SELECT COUNT(*) FROM video_creator_schedule_jobs jobs
       WHERE jobs.schedule_id = video_creator_schedule.id AND jobs.schedule_revision = video_creator_schedule.revision
-        AND NOT jobs.cancelled AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE schedule_job_id = jobs.id)) AS pending_videos
+        AND NOT jobs.cancelled AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+          WHERE object_type IN ('grammar_video', 'word_creator') AND schedule_job_id = jobs.id)) AS pending_videos
     FROM video_creator_schedule WHERE id = $1`, [id]);
   if (!result.rows[0]) throw new Error(`${mode === "daily" ? "Daily" : "Interval"} schedule is not configured.`);
   return mapSchedule(result.rows[0]);
@@ -286,13 +287,14 @@ async function prepareSchedule(schedule: PipelineSchedule, now: Date) {
   // Fail only this schedule's batch, even when both slots share a revision/time.
   await query(`WITH failed AS (
     SELECT jobs.scheduled_for, runs.id, runs.error FROM video_creator_schedule_jobs jobs
-    JOIN video_creator_runs runs ON runs.schedule_job_id = jobs.id
+    JOIN vc_runs_shared runs ON runs.schedule_job_id = jobs.id AND runs.object_type IN ('grammar_video', 'word_creator')
     WHERE jobs.schedule_revision = $1::bigint AND jobs.schedule_id = $2 AND runs.status = 'failed'
   ), cancelled AS (
     UPDATE video_creator_schedule_jobs jobs SET cancelled = TRUE FROM failed
     WHERE jobs.schedule_id = $2 AND jobs.schedule_revision = $1::bigint
       AND jobs.scheduled_for = failed.scheduled_for AND NOT jobs.cancelled
-      AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE schedule_job_id = jobs.id)
+      AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+        WHERE object_type IN ('grammar_video', 'word_creator') AND schedule_job_id = jobs.id)
     RETURNING jobs.id
   ) UPDATE video_creator_schedule SET last_error = LEFT(
       'Scheduled generation failed; remaining videos in that batch cancelled. See run #' || failed.id || ': ' || COALESCE(failed.error, ''), 4000)
@@ -301,7 +303,8 @@ async function prepareSchedule(schedule: PipelineSchedule, now: Date) {
 
   const pending = await query(`SELECT 1 FROM video_creator_schedule_jobs jobs
     WHERE jobs.schedule_id = $1 AND jobs.schedule_revision = $2::bigint AND NOT jobs.cancelled
-      AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE schedule_job_id = jobs.id) LIMIT 1`,
+      AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+        WHERE object_type IN ('grammar_video', 'word_creator') AND schedule_job_id = jobs.id) LIMIT 1`,
   [schedule.id, schedule.revision]);
   if (pending.rows.length) return;
   const local = zonedNow(schedule.timezone, now);
@@ -340,10 +343,11 @@ export async function tickSchedule(now = new Date()) {
     await ensureVideoCreatorSchema();
     // Cover a restart after inserting a scheduled run but before storing its PID.
     // Consume that job as failed rather than launching it a second time.
-    await query(`UPDATE video_creator_runs SET status = 'failed',
+    await query(`UPDATE vc_runs_shared SET status = 'failed',
       error = 'Scheduled worker did not record its PID. Check run log before retrying.',
       finished_at = NOW(), after_run_publish = NULL, after_run_pending = FALSE
-      WHERE schedule_job_id IS NOT NULL AND status = 'running' AND runner_pid IS NULL
+      WHERE object_type IN ('grammar_video', 'word_creator')
+        AND schedule_job_id IS NOT NULL AND status = 'running' AND runner_pid IS NULL
         AND started_at < NOW() - INTERVAL '10 minutes'`);
     const schedules = await query<ScheduleRow>(`SELECT ${scheduleColumns}
       FROM video_creator_schedule WHERE enabled ORDER BY id`);
@@ -358,8 +362,9 @@ export async function tickSchedule(now = new Date()) {
       }
     }
     // Global worker/upload barrier is checked AFTER preparing all queues.
-    const busy = await query(`SELECT 1 FROM video_creator_runs
-      WHERE status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL LIMIT 1`);
+    const busy = await query(`SELECT 1 FROM vc_runs_shared
+      WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+        AND (status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL) LIMIT 1`);
     if (busy.rows.length) return;
     const pending = await query<Job>(`SELECT jobs.id, jobs.schedule_id, jobs.schedule_revision::text,
         jobs.scheduled_for::text, jobs.settings
@@ -367,7 +372,8 @@ export async function tickSchedule(now = new Date()) {
       JOIN video_creator_schedule schedule ON schedule.id = jobs.schedule_id
         AND schedule.revision = jobs.schedule_revision AND schedule.enabled
       WHERE NOT jobs.cancelled
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE schedule_job_id = jobs.id)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+          WHERE object_type IN ('grammar_video', 'word_creator') AND schedule_job_id = jobs.id)
       ORDER BY jobs.scheduled_for, jobs.id LIMIT 1`);
     const job = pending.rows[0];
     if (!job) return;

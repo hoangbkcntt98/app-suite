@@ -28,34 +28,13 @@ export async function query<T extends QueryResultRow>(sql: string, values: unkno
 export async function ensureVideoCreatorSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
-      await query(`CREATE TABLE IF NOT EXISTS video_creator_runs (
-        id BIGSERIAL PRIMARY KEY,
-        action TEXT NOT NULL CHECK (action IN ('create_next', 'generate_pattern', 'publish')),
-        pattern_id BIGINT,
-        pattern_name TEXT,
-        status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'success', 'failed')),
-        log_path TEXT NOT NULL,
-        runner_pid INTEGER,
-        error TEXT,
-        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        finished_at TIMESTAMPTZ
-      )`);
-      await query(`CREATE UNIQUE INDEX IF NOT EXISTS video_creator_one_active_run_idx
-      ON video_creator_runs ((1)) WHERE status = 'running'`);
-     await query(`CREATE INDEX IF NOT EXISTS video_creator_runs_status_idx
-       ON video_creator_runs (status, started_at DESC)`);
-      await query(`ALTER TABLE video_creator_runs ADD COLUMN IF NOT EXISTS output_video TEXT`);
-      await query(`ALTER TABLE video_creator_runs ADD COLUMN IF NOT EXISTS runner_pid INTEGER`);
-      await query(`ALTER TABLE video_creator_runs ADD COLUMN IF NOT EXISTS after_run_publish JSONB`);
-      await query(`ALTER TABLE video_creator_runs
-        ADD COLUMN IF NOT EXISTS schedule_job_id BIGINT,
+      await query(`ALTER TABLE "app-suite".runs
         ADD COLUMN IF NOT EXISTS after_run_pending BOOLEAN NOT NULL DEFAULT FALSE`);
-      await query(`CREATE UNIQUE INDEX IF NOT EXISTS video_creator_run_schedule_job_idx
-        ON video_creator_runs (schedule_job_id) WHERE schedule_job_id IS NOT NULL`);
-      // Replace the original CHECK so existing installations accept YouTube runs.
-      await query(`ALTER TABLE video_creator_runs DROP CONSTRAINT IF EXISTS video_creator_runs_action_check,
-        ADD CONSTRAINT video_creator_runs_action_check
-        CHECK (action IN ('create_next', 'generate_pattern', 'publish', 'youtube_publish', 'create_kanji'))`);
+      await query(`CREATE OR REPLACE VIEW vc_runs_shared AS
+        SELECT id, action, pattern_id, pattern_name, status, log_path, runner_pid, error,
+          started_at, ended_at AS finished_at, output_video, after_run_publish,
+          schedule_job_id, after_run_pending, publish_job_id, object_type, object_id, response, metadata
+        FROM "app-suite".runs`);
      await query(`CREATE TABLE IF NOT EXISTS video_creator_videos (
         relative_path TEXT PRIMARY KEY,
         title TEXT NOT NULL DEFAULT '',
@@ -211,7 +190,8 @@ export function processAlive(pid: number) {
 export async function recoverAbandonedRuns() {
   await ensureVideoCreatorSchema();
   const active = await query<{ id: number; runner_pid: number | null; started_at: string }>(
-    `SELECT id, runner_pid, started_at::text FROM video_creator_runs WHERE status = 'running'`,
+    `SELECT id, runner_pid, started_at::text FROM vc_runs_shared
+     WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish') AND status = 'running'`,
   );
   for (const run of active.rows) {
     const stale = run.runner_pid === null
@@ -219,12 +199,13 @@ export async function recoverAbandonedRuns() {
       : !processAlive(run.runner_pid);
     if (stale) {
       await query(
-        `UPDATE video_creator_runs
+        `UPDATE vc_runs_shared
          SET status = 'failed',
              error = COALESCE(error, 'Pipeline interrupted by application restart.'),
              finished_at = COALESCE(finished_at, NOW()),
              runner_pid = NULL
-         WHERE id = $1 AND status = 'running'`,
+         WHERE id = $1 AND object_type IN ('grammar_video', 'word_creator', 'video_publish')
+           AND status = 'running'`,
         [run.id],
       );
     }

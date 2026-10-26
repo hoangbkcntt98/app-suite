@@ -183,7 +183,7 @@ async function tick() {
     if (schedule.cycleActive) {
       if (schedule.activeRunId !== null) {
         const result = await query<{ status: string }>(
-          `SELECT status FROM video_creator_runs WHERE id = $1`,
+          `SELECT status FROM vc_runs_shared WHERE id = $1`,
           [schedule.activeRunId],
         );
         const status = result.rows[0]?.status;

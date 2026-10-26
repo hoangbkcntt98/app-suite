@@ -143,7 +143,7 @@ export async function getBulkPublishState() {
     jobs.scheduled_for::text AS "scheduledFor", batches.timezone,
     COALESCE(runs.status, jobs.state) AS status, COALESCE(runs.error, jobs.error) AS error, runs.id::text AS "runId"
     FROM video_creator_publish_jobs jobs JOIN video_creator_publish_batches batches ON batches.id = jobs.batch_id
-    LEFT JOIN video_creator_runs runs ON runs.publish_job_id = jobs.id
+    LEFT JOIN vc_runs_shared runs ON runs.publish_job_id = jobs.id AND runs.object_type = 'video_publish'
     ORDER BY jobs.scheduled_for DESC, jobs.id DESC LIMIT 2000`);
   return {
     eligibleCount: candidates.items.length, missingCaption: candidates.missingCaption,
@@ -167,12 +167,12 @@ async function updateUnclaimedJobs(where: string, values: unknown[], state: stri
     const locked = await client.query<{ id: string }>(`SELECT jobs.id FROM video_creator_publish_jobs jobs
       JOIN video_creator_publish_batches batches ON batches.id = jobs.batch_id
       WHERE jobs.state = 'queued' AND (${where})
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE publish_job_id = jobs.id)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared WHERE object_type = 'video_publish' AND publish_job_id = jobs.id)
       ORDER BY jobs.id FOR UPDATE OF jobs`, values);
     // Fresh statement snapshot sees a run committed while waiting for its job lock.
     const result = await client.query(`UPDATE video_creator_publish_jobs jobs SET state = $2, error = $3
       WHERE id = ANY($1::bigint[]) AND state = 'queued'
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE publish_job_id = jobs.id)`,
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared WHERE object_type = 'video_publish' AND publish_job_id = jobs.id)`,
     [locked.rows.map((row) => row.id), state, error]);
     await client.query("COMMIT");
     return result.rowCount ?? 0;
@@ -184,23 +184,24 @@ async function updateUnclaimedJobs(where: string, values: unknown[], state: stri
 
 export async function tickBulkPublish() {
   await ensureVideoCreatorSchema();
-  await query(`UPDATE video_creator_runs SET status = 'failed', finished_at = NOW(),
+  await query(`UPDATE vc_runs_shared SET status = 'failed', finished_at = NOW(),
     error = 'Scheduled upload did not record its PID. Check Facebook before retrying.'
-    WHERE publish_job_id IS NOT NULL AND status = 'running' AND runner_pid IS NULL
+    WHERE object_type = 'video_publish' AND publish_job_id IS NOT NULL AND status = 'running' AND runner_pid IS NULL
       AND started_at < NOW() - INTERVAL '10 minutes'`);
   // Do not flood Facebook with all missed days after downtime.
   await updateUnclaimedJobs(
     "(jobs.scheduled_for AT TIME ZONE batches.timezone)::date < (NOW() AT TIME ZONE batches.timezone)::date",
     [], "missed", "Missed local publishing date; not uploaded automatically.",
   );
-  const busy = await query(`SELECT 1 FROM video_creator_runs
-    WHERE status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL LIMIT 1`);
+  const busy = await query(`SELECT 1 FROM vc_runs_shared
+    WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+      AND (status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL) LIMIT 1`);
   if (busy.rows.length) return;
   const job = (await query<{
     id: number; pattern_id: number; relative_path: string; title: string; caption: string;
   }>(`SELECT jobs.id, jobs.pattern_id, jobs.relative_path, jobs.title, jobs.caption FROM video_creator_publish_jobs jobs
     WHERE jobs.state = 'queued' AND jobs.scheduled_for <= NOW()
-      AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE publish_job_id = jobs.id)
+      AND NOT EXISTS (SELECT 1 FROM vc_runs_shared WHERE object_type = 'video_publish' AND publish_job_id = jobs.id)
     ORDER BY jobs.scheduled_for, jobs.id LIMIT 1`)).rows[0];
   if (!job) return;
   try {

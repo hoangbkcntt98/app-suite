@@ -11,9 +11,10 @@ export async function resetPatternsWithoutVideo() {
     await client.query("BEGIN");
     await client.query("SET LOCAL lock_timeout = '5s'");
     // Block new workers until eligibility and reset finish in one transaction.
-    await client.query("LOCK TABLE video_creator_runs IN SHARE ROW EXCLUSIVE MODE");
-    const active = await client.query(`SELECT 1 FROM video_creator_runs
-      WHERE status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL LIMIT 1`);
+    await client.query('LOCK TABLE "app-suite".runs IN SHARE ROW EXCLUSIVE MODE');
+    const active = await client.query(`SELECT 1 FROM vc_runs_shared
+      WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+        AND (status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL) LIMIT 1`);
     if (active.rows.length) {
       throw new PatternResetConflict("Pipeline hoặc upload đang chạy. Chờ hoàn tất rồi reset.");
     }

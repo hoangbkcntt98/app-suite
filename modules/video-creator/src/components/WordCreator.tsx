@@ -46,7 +46,6 @@ export default function WordCreator() {
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<WordCreatorJob | null>(null);
   const [error, setError] = useState("");
-  const [showLog, setShowLog] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
 
   const activeJobId = job && (job.status === "queued" || job.status === "running") ? job.id : null;
@@ -206,9 +205,6 @@ export default function WordCreator() {
       {message ? <p role="status" className={job?.status === "failed" || job?.errors.length ? styles.error : styles.success}>{message}</p> : null}{error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.actionButtons}>
         <button type="button" onClick={() => setShowSchedule(true)}>Schedule Setting</button>
-        <button type="button" onClick={() => setShowLog(true)} disabled={!job?.logs?.length}>
-          Xem log {job?.logs?.length ? `(${job.logs.length})` : ""}
-        </button>
       </div>
     </section>
     <section style={{ gridColumn: "1 / -1" }}>
@@ -224,22 +220,6 @@ export default function WordCreator() {
         disabled={busy}
       />
     </section>
-    {showLog ? (
-      <div className={styles.logBackdrop} role="presentation" onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setShowLog(false);
-      }}>
-        <section className={styles.logDialog} role="dialog" aria-modal="true" aria-labelledby="word-creator-log-title">
-          <header className={styles.logHeader}>
-            <h2 id="word-creator-log-title">Log tạo video</h2>
-            <button type="button" onClick={() => setShowLog(false)} aria-label="Đóng log">Đóng</button>
-          </header>
-          <p className={styles.hint}>200 dòng gần nhất · Log lưu trong DB, cập nhật cùng tiến độ.</p>
-          <pre className={styles.log} role="log" aria-label="Log tạo video">{job?.logs?.length
-            ? job.logs.map((line) => `[${new Date(line.created_at).toLocaleString("vi-VN")}] ${line.level.toUpperCase()}${line.source ? ` [${line.source}]` : ""} ${line.message}`).join("\n")
-            : "Chưa có log cho tác vụ này."}</pre>
-        </section>
-      </div>
-    ) : null}
     {showSchedule ? (
       <div className={styles.logBackdrop} role="presentation" onMouseDown={(event) => {
         if (event.target === event.currentTarget) setShowSchedule(false);

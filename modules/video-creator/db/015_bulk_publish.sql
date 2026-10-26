@@ -25,8 +25,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS video_creator_publish_reserved_path_idx
   ON video_creator_publish_jobs(relative_path) WHERE state IN ('queued', 'failed');
 CREATE INDEX IF NOT EXISTS video_creator_publish_due_idx
   ON video_creator_publish_jobs(scheduled_for) WHERE state = 'queued';
-
-ALTER TABLE video_creator_runs
-  ADD COLUMN IF NOT EXISTS publish_job_id BIGINT REFERENCES video_creator_publish_jobs(id);
-CREATE UNIQUE INDEX IF NOT EXISTS video_creator_run_publish_job_idx
-  ON video_creator_runs(publish_job_id) WHERE publish_job_id IS NOT NULL;

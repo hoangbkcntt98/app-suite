@@ -43,16 +43,17 @@ async function createRun(action: RunAction, patternId?: number, patternName?: st
   const logPath = path.join(logDir, `${safeLogName()}-${action}.log`);
   const values = [action, patternId ?? null, patternName ?? null, logPath, afterRunPublish ? JSON.stringify(afterRunPublish) : null];
   const result = publishJobId !== undefined
-    ? await query<Run>(`INSERT INTO video_creator_runs
-        (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, publish_job_id)
-      SELECT $1, COALESCE($2::bigint, jobs.pattern_id), COALESCE($3::text, jobs.pattern_name), $4, $5::jsonb, FALSE, jobs.id
+    ? await query<Run>(`INSERT INTO vc_runs_shared
+        (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, publish_job_id, object_type, object_id)
+      SELECT $1, COALESCE($2::bigint, jobs.pattern_id), COALESCE($3::text, jobs.pattern_name), $4, $5::jsonb, FALSE, jobs.id, 'video_publish', jobs.id::text
       FROM video_creator_publish_jobs jobs
       JOIN video_creator_publish_batches batches ON batches.id = jobs.batch_id
       WHERE jobs.id = $6 AND jobs.state = 'queued' AND jobs.scheduled_for <= NOW()
         AND (jobs.scheduled_for AT TIME ZONE batches.timezone)::date = (NOW() AT TIME ZONE batches.timezone)::date
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE publish_job_id = jobs.id)
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs
-          WHERE status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared WHERE object_type = 'video_publish' AND publish_job_id = jobs.id)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+          WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+            AND (status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL))
         AND NOT EXISTS (SELECT 1 FROM video_creator_videos videos WHERE videos.relative_path = jobs.relative_path
           AND (NULLIF(BTRIM(videos.facebook_video_id), '') IS NOT NULL
             OR videos.published_at IS NOT NULL OR videos.scheduled_publish_at IS NOT NULL))
@@ -61,18 +62,25 @@ async function createRun(action: RunAction, patternId?: number, patternName?: st
       FOR UPDATE OF jobs
       RETURNING *`, [...values, publishJobId])
     : scheduleJobId === undefined
-    ? await query<Run>(`INSERT INTO video_creator_runs (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending)
-      VALUES ($1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL) RETURNING *`, values)
-    : await query<Run>(`INSERT INTO video_creator_runs
-        (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, schedule_job_id)
-      SELECT $1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL, jobs.id
+    ? await query<Run>(`INSERT INTO vc_runs_shared
+        (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, object_type, object_id)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL,
+        CASE WHEN $1 = 'create_kanji' THEN 'word_creator'
+          WHEN $1 IN ('publish', 'youtube_publish') THEN 'video_publish' ELSE 'grammar_video' END,
+        COALESCE($2::text, $3::text)) RETURNING *`, values)
+    : await query<Run>(`INSERT INTO vc_runs_shared
+        (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, schedule_job_id, object_type, object_id)
+      SELECT $1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL, jobs.id,
+        CASE WHEN $1 = 'create_kanji' THEN 'word_creator' ELSE 'grammar_video' END, jobs.id::text
       FROM video_creator_schedule_jobs jobs
       JOIN video_creator_schedule schedule ON schedule.id = jobs.schedule_id
       WHERE jobs.id = $6 AND NOT jobs.cancelled AND schedule.enabled
         AND jobs.schedule_revision = schedule.revision
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs WHERE schedule_job_id = jobs.id)
-        AND NOT EXISTS (SELECT 1 FROM video_creator_runs
-          WHERE status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+          WHERE object_type IN ('grammar_video', 'word_creator') AND schedule_job_id = jobs.id)
+        AND NOT EXISTS (SELECT 1 FROM vc_runs_shared
+          WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+            AND (status = 'running' OR after_run_pending OR after_run_publish IS NOT NULL))
       FOR UPDATE OF jobs, schedule
       RETURNING *`, [...values, scheduleJobId]);
   if (!result.rows[0]) throw new Error("Scheduled video is no longer pending.");
@@ -89,7 +97,7 @@ function publishAfterRun(run: Pick<Run, "id" | "log_path" | "action">, outputVid
   const task = performPublishAfterRun(run, outputVideo).finally(async () => {
     // Keep the schedule queue waiting while the upload continuation is being
     // prepared, including the gap after its JSON intent has been claimed.
-    await query(`UPDATE video_creator_runs SET after_run_pending = FALSE WHERE id = $1`, [run.id]);
+    await query(`UPDATE vc_runs_shared SET after_run_pending = FALSE WHERE id = $1`, [run.id]);
   }).finally(() => { postRunTasks.delete(run.id); });
   postRunTasks.set(run.id, task);
   return task;
@@ -98,10 +106,10 @@ function publishAfterRun(run: Pick<Run, "id" | "log_path" | "action">, outputVid
 async function performPublishAfterRun(run: Pick<Run, "id" | "log_path" | "action">, outputVideo?: string) {
   const result = await query<{ after_run_publish: AfterRunPublish; status: string; error: string | null }>(`
     WITH pending AS (
-      SELECT id, after_run_publish FROM video_creator_runs
+      SELECT id, after_run_publish FROM vc_runs_shared
       WHERE id = $1 AND status <> 'running' AND after_run_publish IS NOT NULL FOR UPDATE
     )
-    UPDATE video_creator_runs AS runs SET after_run_publish = NULL FROM pending
+    UPDATE vc_runs_shared AS runs SET after_run_publish = NULL FROM pending
     WHERE runs.id = pending.id
     RETURNING pending.after_run_publish, runs.status, runs.error`, [run.id]);
   const row = result.rows[0];
@@ -156,7 +164,7 @@ async function performPublishAfterRun(run: Pick<Run, "id" | "log_path" | "action
 }
 
 async function finishRun(id: number, status: "success" | "failed", error?: string, outputVideo?: string) {
-  await query(`UPDATE video_creator_runs SET status = $2, error = $3, finished_at = NOW(), output_video = $4, runner_pid = NULL WHERE id = $1`,
+  await query(`UPDATE vc_runs_shared SET status = $2, error = $3, finished_at = NOW(), output_video = $4, runner_pid = NULL WHERE id = $1`,
     [id, status, error?.slice(0, 4000) ?? null, outputVideo ?? null]);
 }
 
@@ -258,7 +266,7 @@ async function trackProcess(
       await fs.appendFile(run.log_path, `\nPost-run action error: ${error instanceof Error ? error.message : "Unknown error"}\n`);
     });
   });
-  await query(`UPDATE video_creator_runs SET runner_pid = $2 WHERE id = $1 AND status = 'running'`, [run.id, child.pid ?? null]);
+  await query(`UPDATE vc_runs_shared SET runner_pid = $2 WHERE id = $1 AND status = 'running'`, [run.id, child.pid ?? null]);
   child.unref();
 }
 
@@ -281,7 +289,7 @@ export async function startYouTubePublish(input: YouTubeUploadInput, afterRunPub
     });
   } catch (error) {
     await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start YouTube upload.");
-    await query(`UPDATE video_creator_runs SET after_run_publish = NULL, after_run_pending = FALSE WHERE id = $1`, [run.id]);
+    await query(`UPDATE vc_runs_shared SET after_run_publish = NULL, after_run_pending = FALSE WHERE id = $1`, [run.id]);
     throw error;
   }
   return run;
@@ -347,7 +355,7 @@ export async function startKanjiGeneration(input: {
   try {
     // A scheduled Kanji uses the same durable worker/logs as a manual render.
     // Its run occupies the shared schedule/upload slot until completion.
-    await query("UPDATE video_creator_runs SET runner_pid = $2 WHERE id = $1", [run.id, process.pid]);
+    await query("UPDATE vc_runs_shared SET runner_pid = $2 WHERE id = $1", [run.id, process.pid]);
     await fs.appendFile(run.log_path, "Scheduled Kanji generation queued.\n");
     await enqueueWordCreator({ ...input.kanjiOptions, sources: [source], scheduled: true,
       forceRecreate: input.forceRecreate, pipelineRunId: run.id }, false);
@@ -362,11 +370,11 @@ export async function startKanjiGeneration(input: {
 export async function finishKanjiGeneration(runId: number, result?: {
   videoPath: string; source: string; requiredVocabulary: string;
 }, error?: string) {
-  const run = (await query<Run>("SELECT * FROM video_creator_runs WHERE id = $1 AND action = 'create_kanji'", [runId])).rows[0];
+  const run = (await query<Run>("SELECT * FROM vc_runs_shared WHERE id = $1 AND object_type = 'word_creator' AND action = 'create_kanji'", [runId])).rows[0];
   if (!run || run.status !== "running") return;
   if (result && !error) {
     await markWordCreatorStatus(result.source, result.requiredVocabulary, "video_generated").catch(() => {});
-    await query(`UPDATE video_creator_runs SET after_run_publish = after_run_publish || $2::jsonb
+    await query(`UPDATE vc_runs_shared SET after_run_publish = after_run_publish || $2::jsonb
       WHERE id = $1 AND after_run_publish IS NOT NULL`, [runId, JSON.stringify({
       title: `${result.source} ${result.requiredVocabulary}`,
       caption: `${result.requiredVocabulary} #kanji #jlpt #n1 #japanese #日本語 #漢字`,
@@ -432,7 +440,7 @@ export async function startFacebookPublish(
   } catch (error) {
     await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start Facebook upload.");
     // The caller handles a start failure; leave no second continuation to retry.
-    await query(`UPDATE video_creator_runs SET after_run_publish = NULL, after_run_pending = FALSE WHERE id = $1`, [run.id]);
+    await query(`UPDATE vc_runs_shared SET after_run_publish = NULL, after_run_pending = FALSE WHERE id = $1`, [run.id]);
     throw error;
   }
   return run;
@@ -490,8 +498,9 @@ function monitorResumedRun(run: Pick<Run, "id" | "log_path" | "action" | "publis
 export async function resumeActiveRuns() {
   await ensureVideoCreatorSchema();
   const result = await query<Pick<Run, "id" | "log_path" | "runner_pid" | "action" | "publish_job_id">>(
-    `SELECT id, log_path, runner_pid, action, publish_job_id FROM video_creator_runs
-     WHERE status = 'running' AND runner_pid IS NOT NULL`,
+    `SELECT id, log_path, runner_pid, action, publish_job_id FROM vc_runs_shared
+     WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+       AND status = 'running' AND runner_pid IS NOT NULL`,
   );
   for (const run of result.rows) {
     if (run.runner_pid && processAlive(run.runner_pid)) monitorResumedRun(run, run.runner_pid);
@@ -501,8 +510,9 @@ export async function resumeActiveRuns() {
   }
   // Also cover restart between marking a worker finished and claiming its
   // publishing continuation. Runs without an explicit saved opt-in are ignored.
-  const pending = await query<Run>(`SELECT * FROM video_creator_runs
-    WHERE status <> 'running' AND (after_run_publish IS NOT NULL OR after_run_pending) ORDER BY id`);
+  const pending = await query<Run>(`SELECT * FROM vc_runs_shared
+    WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+      AND status <> 'running' AND (after_run_publish IS NOT NULL OR after_run_pending) ORDER BY id`);
   for (const run of pending.rows) {
     await publishAfterRun(run, run.output_video || undefined);
   }
@@ -510,20 +520,22 @@ export async function resumeActiveRuns() {
 
 export async function listRuns() {
   await ensureVideoCreatorSchema();
-  const result = await query<Run>(`SELECT * FROM video_creator_runs ORDER BY started_at DESC LIMIT 12`);
+  const result = await query<Run>(`SELECT * FROM vc_runs_shared
+    WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
+    ORDER BY started_at DESC LIMIT 12`);
   // Recover paths for runs created before output-video parsing was fixed.
   return Promise.all(result.rows.map(async (run) => {
     if (run.status !== "success") return run;
     if (run.output_video) {
       const normalized = normalizeOutputVideo(run.output_video);
       if (!normalized || normalized === run.output_video) return run;
-      await query(`UPDATE video_creator_runs SET output_video = $2 WHERE id = $1`, [run.id, normalized]).catch(() => {});
+      await query(`UPDATE vc_runs_shared SET output_video = $2 WHERE id = $1`, [run.id, normalized]).catch(() => {});
       return { ...run, output_video: normalized };
     }
     const log = await fs.readFile(run.log_path, "utf8").catch(() => "");
     const outputVideo = parseOutputVideo(log);
     if (!outputVideo) return run;
-    await query(`UPDATE video_creator_runs SET output_video = $2 WHERE id = $1`, [run.id, outputVideo]).catch(() => {});
+    await query(`UPDATE vc_runs_shared SET output_video = $2 WHERE id = $1`, [run.id, outputVideo]).catch(() => {});
     return { ...run, output_video: outputVideo };
   }));
 }

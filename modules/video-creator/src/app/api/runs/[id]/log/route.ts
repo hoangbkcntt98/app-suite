@@ -54,7 +54,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     await ensureVideoCreatorSchema();
     const result = await query<RunLogRow>(`SELECT id, status, log_path, error, started_at, finished_at, output_video
-      FROM video_creator_runs WHERE id = $1`, [runId]);
+      FROM vc_runs_shared
+      WHERE id = $1 AND object_type IN ('grammar_video', 'word_creator', 'video_publish')`, [runId]);
     const run = result.rows[0];
     if (!run) return Response.json({ error: "Không tìm thấy pipeline run." }, { status: 404 });
     const log = await readLogTail(run.log_path);

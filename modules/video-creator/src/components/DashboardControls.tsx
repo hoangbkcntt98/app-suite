@@ -19,12 +19,12 @@ export default function DashboardControls({ patterns }: Props) {
     return () => window.clearInterval(timer);
   }, [router]);
 
-  async function start(action: "create_next" | "generate_pattern", force: boolean = false) {
+  async function start(action: "create_next" | "generate_pattern" | "generate_app_suite_job", force: boolean = false) {
     setBusy(true);
     setMessage("");
     try {
       const selected = patterns.find((item) => String(item.id) === patternId);
-      if (action === "generate_pattern" && !selected) throw new Error("Select a grammar pattern first.");
+      if (action !== "create_next" && !selected) throw new Error("Select a grammar pattern first.");
       const response = await fetch(`${basePath}/api/runs`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -74,6 +74,9 @@ export default function DashboardControls({ patterns }: Props) {
         
         <button disabled={busy || !patterns.length} onClick={() => start("generate_pattern", forceRecreate)}>
           Recreate Selected Pattern
+        </button>
+        <button disabled={busy || !patterns.length} onClick={() => start("generate_app_suite_job")}>
+          Run app-suite Python Job
         </button>
         
         <label className="checkbox-label">

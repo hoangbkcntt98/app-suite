@@ -1,4 +1,4 @@
-import { startGeneration } from "@video/lib/pipeline";
+import { startAppSuiteGrammarJob, startGeneration } from "@video/lib/pipeline";
 
 export const runtime = "nodejs";
 
@@ -12,6 +12,13 @@ export async function POST(request: Request) {
     }
     if (body.action === "generate_pattern") {
       const run = await startGeneration({ patternId: Number(body.patternId), patternName: typeof body.patternName === "string" ? body.patternName : "", forceRecreate });
+      return Response.json({ run }, { status: 202 });
+    }
+    if (body.action === "generate_app_suite_job") {
+      const run = await startAppSuiteGrammarJob({
+        patternId: Number(body.patternId),
+        patternName: typeof body.patternName === "string" ? body.patternName : "",
+      });
       return Response.json({ run }, { status: 202 });
     }
     return Response.json({ error: "Action không hợp lệ." }, { status: 400 });

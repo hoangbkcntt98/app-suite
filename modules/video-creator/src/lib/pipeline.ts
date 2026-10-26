@@ -216,6 +216,7 @@ async function trackProcess(
   command: string,
   args: string[],
   afterSuccess?: (stdout: string, outputVideo?: string) => Promise<void>,
+  cwd: string = appConfig.skillDir(),
 ) {
   const safeArgs = args.map((arg, index) => args[index - 1] === "--page-token" ? "[REDACTED]" : (arg.includes(" ") ? JSON.stringify(arg) : arg));
   const header = `$ ${command} ${safeArgs.join(" ")}\n\n`;
@@ -224,7 +225,7 @@ async function trackProcess(
   try {
     const logFd = openSync(run.log_path, "a");
     child = spawn(command, args, {
-      cwd: appConfig.skillDir(),
+      cwd,
       env: process.env,
       detached: true,
       stdio: ["ignore", logFd, logFd],
@@ -322,6 +323,62 @@ export async function startGeneration(input: {
   } catch (error) {
     await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start generation.");
     await publishAfterRun(run);
+    throw error;
+  }
+  return run;
+}
+
+export async function startAppSuiteGrammarJob(input: {
+  patternId: number;
+  patternName: string;
+}) {
+  if (!Number.isInteger(input.patternId) || input.patternId <= 0 || !input.patternName.trim()) {
+    throw new Error("Chọn mẫu ngữ pháp hợp lệ trước khi chạy job.");
+  }
+
+  const repositoryRoot = path.resolve(appConfig.appRoot(), "../..");
+  const script = path.join(repositoryRoot, "jobs", "create_grammar_video_jobs.py");
+  const configPath = path.join(repositoryRoot, "jobs", "app-tools", "config.json");
+  const rawConfig = await fs.readFile(configPath, "utf8").catch(() => {
+    throw new Error("Không đọc được jobs/app-tools/config.json trên server.");
+  });
+  const jobConfig = JSON.parse(rawConfig) as {
+    database?: { schema?: string };
+    paths?: { dataDir?: string; outputDir?: string };
+    job_config?: {
+      create_grammar_video_jobs?: { dataDir?: string; outputDir?: string; schema?: string };
+    };
+  };
+  const grammarJobConfig = jobConfig.job_config?.create_grammar_video_jobs;
+
+  const configuredDataDir = path.resolve(
+    repositoryRoot,
+    grammarJobConfig?.dataDir || jobConfig.paths?.dataDir || "data",
+  );
+  const configuredOutputDir = path.resolve(
+    repositoryRoot,
+    grammarJobConfig?.outputDir || jobConfig.paths?.outputDir || "outputs",
+  );
+  if (configuredDataDir !== path.resolve(appConfig.dataDir())) {
+    throw new Error("job_config.dataDir phải trùng VIDEO_DATA_DIR để Video Creator đọc được file tạo.");
+  }
+  if (configuredOutputDir !== path.resolve(appConfig.outputDir())) {
+    throw new Error("job_config.outputDir phải trùng VIDEO_OUTPUT_DIR để video xuất hiện trong thư viện.");
+  }
+
+  await fs.access(script);
+  const virtualenvPython = path.join(repositoryRoot, "jobs", "app-tools", ".venv", "bin", "python");
+  const python = process.env.VIDEO_GRAMMAR_JOB_PYTHON?.trim() ||
+    (await fs.access(virtualenvPython).then(() => virtualenvPython).catch(() => "python3"));
+  const schema = process.env.VIDEO_DATABASE_SCHEMA?.trim() || grammarJobConfig?.schema ||
+    jobConfig.database?.schema || "openclaw";
+  const run = await createRun("generate_pattern", input.patternId, input.patternName.trim());
+  const args = [script, "--config", configPath, "--schema", schema, "--pattern-id", String(input.patternId)];
+
+  try {
+    await trackProcess(run, python, args, undefined, repositoryRoot);
+  } catch (error) {
+    await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start grammar job.");
     throw error;
   }
   return run;

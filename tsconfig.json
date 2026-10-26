@@ -46,6 +46,6 @@
   ],
   "exclude": [
     "node_modules",
-    "app-tools"
+    "jobs/app-tools"
   ]
 }

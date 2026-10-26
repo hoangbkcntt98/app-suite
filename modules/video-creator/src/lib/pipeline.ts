@@ -6,6 +6,8 @@ import { ensureVideoCreatorSchema, processAlive, query } from "@video/lib/db";
 import { markFacebookPublished, markFacebookScheduled, markYouTubeUploaded, saveVideoDetails } from "@video/lib/video";
 import { markWordCreatorStatus } from "@video/lib/wordCreator/index";
 import { validateYouTubePublishSettings, validateYouTubeUpload, youtubeConfiguration, type YouTubeUploadInput, type YouTubePublishSettings } from "@video/lib/youtube";
+import type { Run, RunAction } from "@video/models/run";
+export type { Run } from "@video/models/run";
 
 type AfterRunPublish = {
   facebook?: boolean;
@@ -14,15 +16,6 @@ type AfterRunPublish = {
   sourceRunId?: number;
   title?: string;
   caption?: string;
-};
-
-type RunAction = "create_next" | "generate_pattern" | "publish" | "youtube_publish" | "create_kanji";
-export type Run = {
-  id: number; action: RunAction; pattern_id: number | null; pattern_name: string | null;
-  status: "running" | "success" | "failed"; log_path: string; error: string | null;
-  started_at: string; finished_at: string | null;
-  output_video?: string | null; runner_pid?: number | null;
-  publish_job_id?: number | null;
 };
 
 function safeLogName() {
@@ -67,7 +60,7 @@ async function createRun(action: RunAction, patternId?: number, patternName?: st
       VALUES ($1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL,
         CASE WHEN $1 = 'create_kanji' THEN 'word_creator'
           WHEN $1 IN ('publish', 'youtube_publish') THEN 'video_publish' ELSE 'grammar_video' END,
-        COALESCE($2::text, $3::text)) RETURNING *`, values)
+        COALESCE($2::bigint::text, $3::text)) RETURNING *`, values)
     : await query<Run>(`INSERT INTO vc_runs_shared
         (action, pattern_id, pattern_name, log_path, after_run_publish, after_run_pending, schedule_job_id, object_type, object_id)
       SELECT $1, $2, $3, $4, $5::jsonb, $5::jsonb IS NOT NULL, jobs.id,
@@ -516,26 +509,4 @@ export async function resumeActiveRuns() {
   for (const run of pending.rows) {
     await publishAfterRun(run, run.output_video || undefined);
   }
-}
-
-export async function listRuns() {
-  await ensureVideoCreatorSchema();
-  const result = await query<Run>(`SELECT * FROM vc_runs_shared
-    WHERE object_type IN ('grammar_video', 'word_creator', 'video_publish')
-    ORDER BY started_at DESC LIMIT 12`);
-  // Recover paths for runs created before output-video parsing was fixed.
-  return Promise.all(result.rows.map(async (run) => {
-    if (run.status !== "success") return run;
-    if (run.output_video) {
-      const normalized = normalizeOutputVideo(run.output_video);
-      if (!normalized || normalized === run.output_video) return run;
-      await query(`UPDATE vc_runs_shared SET output_video = $2 WHERE id = $1`, [run.id, normalized]).catch(() => {});
-      return { ...run, output_video: normalized };
-    }
-    const log = await fs.readFile(run.log_path, "utf8").catch(() => "");
-    const outputVideo = parseOutputVideo(log);
-    if (!outputVideo) return run;
-    await query(`UPDATE vc_runs_shared SET output_video = $2 WHERE id = $1`, [run.id, outputVideo]).catch(() => {});
-    return { ...run, output_video: outputVideo };
-  }));
 }

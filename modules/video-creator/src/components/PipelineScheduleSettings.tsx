@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "@video/app/page.module.css";
-import type { PipelineSchedule as Schedule } from "@video/lib/scheduler";
+import type { PipelineSchedule as Schedule } from "@video/models/schedule";
 
 const basePath = process.env.NEXT_PUBLIC_VIDEO_CREATOR_BASE_PATH || "";
 const timezoneOptions = [

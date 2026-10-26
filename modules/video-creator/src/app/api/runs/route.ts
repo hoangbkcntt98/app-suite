@@ -1,4 +1,4 @@
-import { startGeneration } from "@video/lib/pipeline";
+import { startGenerationRun } from "@video/services/runService";
 
 export const runtime = "nodejs";
 
@@ -7,11 +7,11 @@ export async function POST(request: Request) {
     const body = await request.json() as { action?: string; patternId?: unknown; patternName?: unknown; forceRecreate?: unknown };
     const forceRecreate = body.forceRecreate === true;
     if (body.action === "create_next") {
-      const run = await startGeneration({});
+      const run = await startGenerationRun({});
       return Response.json({ run }, { status: 202 });
     }
     if (body.action === "generate_pattern") {
-      const run = await startGeneration({ patternId: Number(body.patternId), patternName: typeof body.patternName === "string" ? body.patternName : "", forceRecreate });
+      const run = await startGenerationRun({ patternId: Number(body.patternId), patternName: typeof body.patternName === "string" ? body.patternName : "", forceRecreate });
       return Response.json({ run }, { status: 202 });
     }
     return Response.json({ error: "Action không hợp lệ." }, { status: 400 });

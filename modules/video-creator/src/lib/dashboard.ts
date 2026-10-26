@@ -1,4 +1,5 @@
-import { listRuns, type Run } from "@video/lib/pipeline";
+import { listRuns } from "@video/services/runService";
+import type { Run } from "@video/models/run";
 import { ensureVideoCreatorSchema, query } from "@video/lib/db";
 
 export type GrammarPattern = {

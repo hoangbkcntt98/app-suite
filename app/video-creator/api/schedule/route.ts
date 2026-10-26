@@ -1,30 +1,28 @@
-import { deletePipelineSchedule, getPipelineSchedule, startScheduler, updatePipelineSchedule, validateScheduleMode, validateScheduleKind } from "@video/lib/scheduler";
+import { ScheduleService } from "@video/services/scheduleService";
+import { SchedulerService } from "@video/services/schedulerService";
 
 export const runtime = "nodejs";
+const scheduleService = new ScheduleService();
+const schedulerService = new SchedulerService();
 
 function requestMode(request: Request) {
-  const mode = new URL(request.url).searchParams.get("mode");
-  return mode === null ? null : validateScheduleMode(mode);
+  return new URL(request.url).searchParams.get("mode");
 }
 function requestKind(request: Request) {
-  const kind = new URL(request.url).searchParams.get("kind");
-  return kind === null ? null : validateScheduleKind(kind);
+  return new URL(request.url).searchParams.get("kind");
 }
 
 export async function GET(request: Request) {
-  let mode;
-  let kind;
+  const mode = requestMode(request) ?? "daily";
+  const kind = requestKind(request) ?? "grammar";
   try {
-    mode = requestMode(request) ?? "daily";
-    kind = requestKind(request) ?? "grammar";
-  } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 400 });
-  }
-  try {
-    startScheduler();
-    return Response.json({ schedule: await getPipelineSchedule(mode, kind) });
+    schedulerService.start();
+    return Response.json({ schedule: await scheduleService.get(mode, kind) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not read schedule.";
+    if (message === "Choose daily or interval schedule mode." || message === "Choose grammar or kanji schedule.") {
+      return Response.json({ error: message }, { status: 400 });
+    }
     return Response.json({ error: message }, { status:
       message === "Daily schedule is not configured." || message === "Interval schedule is not configured." ? 404 : 500 });
   }
@@ -51,11 +49,11 @@ export async function PUT(request: Request) {
     };
     const targetMode = requestMode(request);
     const targetKind = requestKind(request);
-    const kind = validateScheduleKind(body.kind ?? targetKind ?? "grammar");
+    const kind = body.kind ?? targetKind ?? "grammar";
     if (body.kind === null || (targetKind !== null && targetKind !== kind)) {
       return Response.json({ error: "Schedule kind does not match request." }, { status: 400 });
     }
-    const mode = validateScheduleMode(body.mode ?? targetMode ?? "daily");
+    const mode = body.mode ?? targetMode ?? "daily";
     if (body.mode === null || (targetMode !== null && targetMode !== mode)) {
       return Response.json({ error: "Schedule mode does not match request." }, { status: 400 });
     }
@@ -67,8 +65,8 @@ export async function PUT(request: Request) {
     if (body.publishToYouTube !== undefined && typeof body.publishToYouTube !== "boolean") {
       return Response.json({ error: "Publish to YouTube must be a boolean." }, { status: 400 });
     }
-    startScheduler();
-    const schedule = await updatePipelineSchedule({
+    schedulerService.start();
+    const schedule = await scheduleService.update({
       enabled: body.enabled,
       kind,
       kanjiOptions: body.kanjiOptions,
@@ -93,7 +91,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    await deletePipelineSchedule(requestMode(request) ?? "daily", requestKind(request) ?? "grammar");
+    await scheduleService.delete(requestMode(request) ?? "daily", requestKind(request) ?? "grammar");
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not delete schedule." }, { status: 400 });

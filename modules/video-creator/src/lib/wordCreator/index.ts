@@ -4,6 +4,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { appConfig, toRelativeOutputPath } from "@video/lib/config";
 import { db, ensureWordCreatorSchema, query } from "@video/lib/db";
+import { currentWordCreatorMascotPath } from "@video/lib/wordCreator/assets";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -106,10 +107,19 @@ async function copyHtmlAssets(html: string, htmlPath: string) {
     const relative = decodeURIComponent(reference.split(/[?#]/, 1)[0]);
     const target = path.resolve(outputDir, relative);
     if (!target.startsWith(`${outputDir}${path.sep}`)) continue;
+    if (path.basename(relative) === "spinning-bear.gif") {
+      const mascot = await currentWordCreatorMascotPath();
+      if (!mascot) throw new Error("Thiếu spinning-bear.gif. Tải GIF trong màn WordCreator trước khi tạo video.");
+      await fs.copyFile(mascot, target);
+      continue;
+    }
     if (await fs.stat(target).then((stat) => stat.isFile()).catch(() => false)) continue;
-    const templateAsset = path.resolve(appConfig.appRoot(), relative);
-    const source = await fs.stat(templateAsset).then((stat) => stat.isFile() ? templateAsset : null).catch(() => null)
-      || await findLibraryAsset(path.basename(relative));
+    const templateDir = path.join(__dirname, "template");
+    const templateAsset = path.resolve(templateDir, relative);
+    const templateSource = templateAsset.startsWith(`${templateDir}${path.sep}`)
+      ? await fs.stat(templateAsset).then((stat) => stat.isFile() ? templateAsset : null).catch(() => null)
+      : null;
+    const source = templateSource || await findLibraryAsset(path.basename(relative));
     if (source) await fs.copyFile(source, target);
   }
 }

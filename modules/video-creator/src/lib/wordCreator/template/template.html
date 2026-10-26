@@ -173,6 +173,12 @@
             font-size: 4.8cqw
         }
 
+        .icon-circle svg {
+            width: 5.2cqw;
+            height: 5.2cqw;
+            display: block
+        }
+
         .answer:nth-child(2) .icon-circle {
             background: #fff0f3
         }
@@ -246,6 +252,11 @@
 
         .mascot-fallback span {
             transform: rotate(7deg)
+        }
+
+        .mascot-fallback svg {
+            width: 75%;
+            height: 75%;
         }
 
         .timer-block {
@@ -363,18 +374,18 @@
                 <p class="prompt">読み方は？</p>
             </div>
             <div class="answers">
-                <div class="answer"><span class="icon-circle">👍</span><span class="letter">A.</span><span
+                <div class="answer"><span class="icon-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#258be0" d="M9 10 12 3c.4-1 1.8-.8 2 .3l.5 4.2H19a2 2 0 0 1 2 2.3l-1.2 8A2.5 2.5 0 0 1 17.3 20H9V10ZM3 10h4v10H3z"/></svg></span><span class="letter">A.</span><span
                         class="answer-text" data-fit>あう</span></div>
-                <div class="answer"><span class="icon-circle">❤️</span><span class="letter">B.</span><span
+                <div class="answer"><span class="icon-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#ef476f" d="M12 21s-9-5.7-9-12a5 5 0 0 1 9-3.1A5 5 0 0 1 21 9c0 6.3-9 12-9 12Z"/></svg></span><span class="letter">B.</span><span
                         class="answer-text" data-fit>そうう</span></div>
-                <div class="answer"><span class="icon-circle">😆</span><span class="letter">C.</span><span
+                <div class="answer"><span class="icon-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#f6c445"/><path d="M8 9h.1M16 9h.1M7.5 13c.7 3 2.3 4.5 4.5 4.5s3.8-1.5 4.5-4.5h-9Z" fill="none" stroke="#573d22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="letter">C.</span><span
                         class="answer-text" data-fit>あえる</span></div>
-                <div class="answer"><span class="icon-circle">😮</span><span class="letter">D.</span><span
+                <div class="answer"><span class="icon-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#8b9cf6"/><path d="M8 9h.1M16 9h.1" stroke="#25294f" stroke-width="3" stroke-linecap="round"/><ellipse cx="12" cy="15" rx="2" ry="2.8" fill="#25294f"/></svg></span><span class="letter">D.</span><span
                         class="answer-text" data-fit>かう</span></div>
             </div>
             <div class="bottom">
-                <div class="person-wrap"><img src="spinning-bear.gif" alt="" onerror="this.hidden=true">
-                    <div class="mascot-fallback"><span>あ</span></div>
+                <div class="person-wrap"><img src="spinning-bear.gif" alt="Spinning bear" onerror="this.hidden=true">
+                    <div class="mascot-fallback" aria-hidden="true"><svg viewBox="0 0 100 100"><circle cx="26" cy="28" r="17" fill="#9b6b45"/><circle cx="74" cy="28" r="17" fill="#9b6b45"/><circle cx="50" cy="53" r="39" fill="#c58c5b"/><circle cx="38" cy="49" r="4" fill="#30231b"/><circle cx="62" cy="49" r="4" fill="#30231b"/><ellipse cx="50" cy="66" rx="12" ry="9" fill="#f4ddc2"/><circle cx="50" cy="62" r="3" fill="#30231b"/><path d="M45 70q5 5 10 0" fill="none" stroke="#30231b" stroke-width="3" stroke-linecap="round"/></svg></div>
                 </div>
                 <div class="timer-block">
                     <div class="timer-caption"><strong>考え中....</strong>答えてみてね!</div>

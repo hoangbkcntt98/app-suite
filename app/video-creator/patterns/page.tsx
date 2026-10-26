@@ -2,6 +2,8 @@ import { appPath } from "@video/lib/paths";
 import Link from "next/link";
 import AppSwitcher from "@video/components/AppSwitcher";
 import LogoutButton from "@video/components/LogoutButton";
+import DashboardControls from "@video/components/DashboardControls";
+import PipelineScheduleSettings from "@video/components/PipelineScheduleSettings";
 import ResetPatternStatuses from "@video/components/ResetPatternStatuses";
 import BulkPublishSchedule from "@video/components/BulkPublishSchedule";
 import PatternFilters from "@video/components/PatternFilters";
@@ -44,10 +46,13 @@ export default async function PatternsPage() {
           <div>
             <p className="eyebrow">GRAMMAR_PATTERNS</p>
             <h1>Grammar Pattern List</h1>
-            <p>IDs are ordered ascending. Select a pattern from Dashboard to run the pipeline.</p>
+            <p>IDs are ordered ascending. Create grammar videos and manage schedules here.</p>
           </div>
           <strong>{patterns.length} patterns</strong>
         </div>
+        <DashboardControls patterns={patterns} />
+        <PipelineScheduleSettings mode="daily" />
+        <PipelineScheduleSettings mode="interval" />
         {!error ? <ResetPatternStatuses /> : null}
         {!error ? <BulkPublishSchedule /> : null}
         {error ? (

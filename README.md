@@ -28,6 +28,30 @@ live in the `openclaw` schema; apply SQL migrations from
 `modules/video-creator/db` to `VIDEO_DATABASE_URL`. Manga Web uses
 `MANGA_DB_*`; Anki tables use the `anki` schema.
 
+## WordCreator Japanese fonts
+
+WordCreator renders Japanese text in Chromium. On Oracle Linux 9, install Noto
+CJK fonts so Kanji, kana, and Japanese text do not render as empty squares:
+
+```bash
+sudo dnf install -y google-noto-sans-cjk-ttc-fonts
+sudo fc-cache -f
+fc-match "Noto Sans CJK JP"
+```
+
+The font package includes Japanese glyph coverage. Recreate videos rendered
+before installation; existing MP4 files do not change when fonts are installed.
+
+## WordCreator mascot GIF
+
+Upload a replacement `spinning-bear.gif` from the WordCreator page. Uploads are
+stored at `VIDEO_DATA_DIR/word-creator/assets/spinning-bear.gif` (default:
+`/mnt/openclaw-data/openclaw/word-creator/assets/spinning-bear.gif`) and override
+the bundled GIF for newly created videos. Accepted files must be valid GIFs,
+under 15 MB, and no larger than 2048×2048. The server needs `ffprobe` available
+on `PATH` to validate uploads; set `VIDEO_FFPROBE_PATH` if it is installed
+elsewhere. Existing videos do not change after a GIF upload.
+
 Video Creator requires `VIDEO_APP_AUTH_USERNAME`, `VIDEO_APP_AUTH_PASSWORD`,
 and `VIDEO_APP_AUTH_SECRET`. Its `/video-creator` pages and API routes require
 login, except login/logout endpoints. LifeQuest and Manga Web retain their

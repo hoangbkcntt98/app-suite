@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { WordCreatorJob } from "@video/lib/wordCreator/jobs";
 import type { WordCreatorSource } from "@video/lib/wordCreator/index";
 import KanjiList from "./KanjiList";
+import PipelineScheduleSettings from "./PipelineScheduleSettings";
+import WordCreatorMascotUpload from "./WordCreatorMascotUpload";
 import styles from "./WordCreator.module.css";
 
 const basePath = process.env.NEXT_PUBLIC_VIDEO_CREATOR_BASE_PATH || "";
@@ -45,6 +47,7 @@ export default function WordCreator() {
   const [job, setJob] = useState<WordCreatorJob | null>(null);
   const [error, setError] = useState("");
   const [showLog, setShowLog] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const activeJobId = job && (job.status === "queued" || job.status === "running") ? job.id : null;
   const busy = loading || submitting || activeJobId !== null;
@@ -181,6 +184,7 @@ export default function WordCreator() {
 
   return <div className={styles.layout}>
     <section className={styles.panel}>
+      <WordCreatorMascotUpload />
       <div className={styles.fields}>
         <label>Tìm Kanji / từ vựng<input value={sourceSearch} onChange={(event) => { setSourceSearch(event.target.value); setSourceOffset(0); }} placeholder="遭, 遭う..." disabled={busy} /></label>
         <label>Thời lượng video (giây)<input type="number" min="1" max="300" step="1" value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)} disabled={busy} /></label>
@@ -200,9 +204,12 @@ export default function WordCreator() {
       <p className={styles.hint}>Nguồn: public.anki_kanji. File lưu trong WORD_CREATOR_OUTPUT_DIR hoặc DATA_DIR/word-creator.</p>
       {activeJobId ? <p className={styles.hint}>Video chạy nền. Có thể tải lại trang để xem tiến độ.</p> : null}
       {message ? <p role="status" className={job?.status === "failed" || job?.errors.length ? styles.error : styles.success}>{message}</p> : null}{error ? <p className={styles.error}>{error}</p> : null}
-      <button type="button" onClick={() => setShowLog(true)} disabled={!job?.logs?.length}>
-        Xem log {job?.logs?.length ? `(${job.logs.length})` : ""}
-      </button>
+      <div className={styles.actionButtons}>
+        <button type="button" onClick={() => setShowSchedule(true)}>Schedule Setting</button>
+        <button type="button" onClick={() => setShowLog(true)} disabled={!job?.logs?.length}>
+          Xem log {job?.logs?.length ? `(${job.logs.length})` : ""}
+        </button>
+      </div>
     </section>
     <section style={{ gridColumn: "1 / -1" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -230,6 +237,22 @@ export default function WordCreator() {
           <pre className={styles.log} role="log" aria-label="Log tạo video">{job?.logs?.length
             ? job.logs.map((line) => `[${new Date(line.created_at).toLocaleString("vi-VN")}] ${line.level.toUpperCase()}${line.source ? ` [${line.source}]` : ""} ${line.message}`).join("\n")
             : "Chưa có log cho tác vụ này."}</pre>
+        </section>
+      </div>
+    ) : null}
+    {showSchedule ? (
+      <div className={styles.logBackdrop} role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setShowSchedule(false);
+      }}>
+        <section className={`${styles.logDialog} ${styles.scheduleDialog}`} role="dialog" aria-modal="true" aria-labelledby="word-creator-schedule-title">
+          <header className={styles.logHeader}>
+            <h2 id="word-creator-schedule-title">WordCreator Schedule Settings</h2>
+            <button type="button" onClick={() => setShowSchedule(false)} aria-label="Đóng schedule settings">Đóng</button>
+          </header>
+          <div className={styles.scheduleList}>
+            <PipelineScheduleSettings mode="daily" kind="kanji" />
+            <PipelineScheduleSettings mode="interval" kind="kanji" />
+          </div>
         </section>
       </div>
     ) : null}

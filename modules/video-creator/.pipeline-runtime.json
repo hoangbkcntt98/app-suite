@@ -20,7 +20,7 @@
     "autoPublish": false
   },
   "database": {
-    "url": "postgresql://hoangdo:Hoangdo%40123@openclaw:5432/openclaw"
+    "url": "postgresql://hoangdo:Hoangdo%40123@openclaw:5432/app_suite_db"
   },
   "paths": {
     "dataDir": "/var/web-data/video-creator",

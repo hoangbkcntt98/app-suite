@@ -21,6 +21,8 @@ jobs/app-tools/.venv/bin/python jobs/create_grammar_video_jobs.py \
 
 - `--pattern-id ID`: process that grammar row. Without it, claim the lowest ID
   with no `video_path` and no incomplete run.
+- `--force`: allow default selection of patterns with existing `video_path` and
+  overwrite generated files. Still refuses patterns with an incomplete run.
 - `--schema NAME`: override configured PostgreSQL schema.
 - `--sync-example`: sync existing examples from dated JSON files for patterns
   that already have `video_path`; does not generate a video.
@@ -44,6 +46,8 @@ and `jobs/app-tools/config.example.json`.
 - `paths.dataDir`: generated JSON, scripts, prompts, images, audio, and run logs;
   default `data`.
 - `paths.outputDir`: rendered lesson MP4; default `outputs`.
+- `runLogDir`: per-run log directory; default
+  `jobs/logs/video-creator/runs`.
 - `job_config.audio_extension`: generated audio extension; falls back to
   `ai.audio.request_options.response_format`, then `mp3`.
 - `job_config.ffmpeg_bin`: FFmpeg executable; default `ffmpeg`.
@@ -56,12 +60,14 @@ relative to `jobs/`. FFmpeg must be installed and available on `PATH`.
 ## Processing logic
 
 1. Open PostgreSQL pool and ensure required artifact columns exist on
-   `openclaw.runs` and `{schema}.grammar_patterns`. Artifact columns track
-   video, image, audio, caption, script paths, and optional Facebook metadata.
-2. Select requested grammar row or claim next eligible row. A claimed row has
-   empty `video_path` and no incomplete `openclaw.runs` entry for that pattern.
-3. Create a run record in `openclaw.runs`, with pattern ID, PID, schema, and a
-   per-run log under the dated data directory.
+   `{schema}.grammar_patterns`. Run tracking uses `{schema}.runs`, with schema
+   taken from `--schema` or job/database config.
+2. Select requested grammar row or claim next eligible row. Default claim needs
+   empty `video_path`; `--force` also allows completed patterns. Both modes skip
+   patterns with an incomplete `{schema}.runs` entry where
+   `object_type='grammar_patterns'`.
+3. Create a run record in `{schema}.runs`, with pattern ID and PID in metadata,
+   plus a per-run log under configured `runLogDir`.
 4. Call Chat AI with `CONTENT_PROMPT`. Response must be valid JSON containing
    `meaning_ja`, `meaning_vi`, `structure`, `usage_note`, `nuance`, `examples`,
    `signal`, and `after_clause`. `examples` must contain exactly three complete
@@ -86,9 +92,18 @@ relative to `jobs/`. FFmpeg must be installed and available on `PATH`.
     metadata are persisted to `grammar_patterns`/run metadata. Upload failures
     appear in the JSON result and make command exit non-zero.
 
-Run statuses progress through `starting`, `examples_generated`,
-`script_generated`, `assets_generated`, and `video_generated`; errors set
-`failed`. The logger writes shared logs and a per-run log.
+Run `status` stores current stage (`starting`, `examples_generated`,
+`script_generated`, `assets_generated`, `video_generated`, or `failed`).
+`is_completed` stays false during work and becomes true at terminal stage.
+Detailed stage and artifact paths are stored in `metadata`. The logger writes
+shared logs and a per-run log.
+
+When launched by Video Creator, `VIDEO_PIPELINE_RUN_ID` identifies run row
+already created by app. Job validates row against selected grammar pattern,
+reuses its `log_path` and ID, and writes stage/output metadata without creating
+duplicate run or changing terminal status. Video Creator finalizes shared run
+after child process exits. `create_next` runs bind claimed pattern ID/name to
+parent row once selected.
 
 ## Files
 
@@ -101,10 +116,11 @@ All generated files use current date directory `YYYYMMDD`.
 - Images: `{id}_{safe_pattern}_image_part1.png` through `part3.png`
 - Audio: `{id}_{safe_pattern}_script_part1.{ext}` through `part3.{ext}`
 - Video: `{id}_{safe_pattern}_video.mp4`
-- Run log: `{id}_{safe_pattern}_{time}_{pid}_job.log`
+- Run log: `{runLogDir}/{id}_{safe_pattern}_{time}_{pid}_job.log`
 
 `safe_pattern` sanitizes characters unsafe in filenames. Database artifact
 columns contain paths; image/audio/script paths are stored as JSON arrays.
+Set `job_config.create_grammar_video_jobs.runLogDir` in app-tools config.
 
 ## Example synchronization
 

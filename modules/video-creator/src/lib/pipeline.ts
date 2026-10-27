@@ -210,6 +210,7 @@ async function trackProcess(
   args: string[],
   afterSuccess?: (stdout: string, outputVideo?: string) => Promise<void>,
   cwd: string = appConfig.skillDir(),
+  envOverrides: NodeJS.ProcessEnv = {},
 ) {
   const safeArgs = args.map((arg, index) => args[index - 1] === "--page-token" ? "[REDACTED]" : (arg.includes(" ") ? JSON.stringify(arg) : arg));
   const header = `$ ${command} ${safeArgs.join(" ")}\n\n`;
@@ -219,7 +220,7 @@ async function trackProcess(
     const logFd = openSync(run.log_path, "a");
     child = spawn(command, args, {
       cwd,
-      env: process.env,
+      env: { ...process.env, ...envOverrides },
       detached: true,
       stdio: ["ignore", logFd, logFd],
     });
@@ -344,7 +345,9 @@ export async function startGeneration(input: {
   const args = [script, "--config", configPath, "--schema", schema];
   if (selected) args.push("--pattern-id", String(input.patternId));
   try {
-    await trackProcess(run, python, args, undefined, repositoryRoot);
+    await trackProcess(run, python, args, undefined, repositoryRoot, {
+      VIDEO_PIPELINE_RUN_ID: String(run.id),
+    });
   } catch (error) {
     await finishRun(run.id, "failed", error instanceof Error ? error.message : "Could not start generation.");
     await publishAfterRun(run);

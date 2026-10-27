@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -26,8 +27,14 @@ if str(APP_TOOLS_ROOT) not in sys.path:
 if str(JOBS_ROOT) not in sys.path:
     sys.path.insert(0, str(JOBS_ROOT))
 
-from job_interface import get_effective_job_config, get_job_setting
-from python.ai import VideoTaskFailed, call_api, text_to_video
+from job_interface import (
+    get_effective_job_config,
+    get_job_setting,
+    insert_run_record,
+    runs_table,
+    update_run_record,
+)
+from python.ai import VideoTaskFailed, call_api, text_to_audio, text_to_video
 from python.config import load_config
 from python.database import DatabasePool
 from python.logger import get_logger
@@ -122,6 +129,7 @@ class GrammarExampleVideoJob:
         )
         if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", self.schema):
             raise ValueError(f"Invalid PostgreSQL schema name: {self.schema!r}")
+        self.runs_table = runs_table(self.schema)
         self.config = get_effective_job_config(config, JOB_ID)
         database_config = self.config.get("database", {})
         database_config = dict(database_config) if isinstance(database_config, dict) else {}
@@ -129,6 +137,10 @@ class GrammarExampleVideoJob:
         database_config["options"] = f"{options} -c search_path={self.schema},public".strip()
         self.config["database"] = database_config
         self.database = DatabasePool.create(self.config)
+        self.database.execute(
+            f'ALTER TABLE "{self.schema}"."grammar_examples" '
+            "ADD COLUMN IF NOT EXISTS video_path TEXT"
+        )
         self.logger = get_logger("grammar-example-video-job", self.config)
         self.ffmpeg = str(get_job_setting(
             config, JOB_ID, "job_config", "ffmpeg_bin",
@@ -140,23 +152,46 @@ class GrammarExampleVideoJob:
         ))
         self.output_path = self.output_dir / datetime.now().strftime("%Y%m%d")
         self.output_path.mkdir(parents=True, exist_ok=True)
+        run_log_dir = get_job_setting(config, JOB_ID, "paths", "runLogDir")
+        if run_log_dir is None:
+            run_log_dir = get_job_setting(
+                config, "create_grammar_video_jobs", "paths", "runLogDir",
+                "jobs/logs/video-creator/runs",
+            )
+        self.run_log_dir = _resolve_path(run_log_dir)
         self.run_id: int | None = None
         self.current_example_id: int | None = None
+        self.run_log_handler: logging.FileHandler | None = None
         self.max_retries = int(get_job_setting(config, JOB_ID, "job_config", "max_retries", 3))
         if self.max_retries < 1:
             raise ValueError("job_config.create_grammar_example_video_jobs.max_retries must be at least 1.")
+        self.audio_extension = str(get_job_setting(
+            config, JOB_ID, "job_config", "audio_extension", "mp3"
+        )).strip().lstrip(".")
+        if not re.fullmatch(r"[A-Za-z0-9]+", self.audio_extension):
+            raise ValueError("job_config.create_grammar_example_video_jobs.audio_extension must be a file extension.")
         self.ffprobe = shutil.which("ffprobe")
 
-    def load_examples(self, pattern_id: int | None, example_id: int | None) -> list[dict[str, Any]]:
+    def load_examples(
+        self,
+        pattern_id: int | None,
+        example_id: int | None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         conditions = [
             "examples.example_ja IS NOT NULL",
             "NULLIF(BTRIM(examples.example_ja), '') IS NOT NULL",
             "patterns.pattern IS NOT NULL",
-            """NOT EXISTS (
-                SELECT 1 FROM openclaw.runs AS runs
-                WHERE runs.object_type = 'grammar_examples'
-                  AND runs.object_id = examples.id::text
-                  AND runs.is_completed = FALSE
+            f"""NOT EXISTS (
+                SELECT 1 FROM {self.runs_table} AS runs
+                WHERE runs.is_completed = FALSE
+                  AND (
+                    (runs.object_type = 'grammar_patterns'
+                     AND runs.object_id = patterns.id::text)
+                    OR
+                    (runs.object_type = 'grammar_examples'
+                     AND runs.metadata->>'pattern_id' = patterns.id::text)
+                  )
             )""",
         ]
         params: list[Any] = []
@@ -166,6 +201,12 @@ class GrammarExampleVideoJob:
         if example_id is not None:
             conditions.append("examples.id = %s")
             params.append(example_id)
+        limit_clause = ""
+        if limit is not None:
+            if limit < 1:
+                raise ValueError("--limit must be a positive integer.")
+            limit_clause = "LIMIT %s"
+            params.append(limit)
         return self.database.execute(
             f"""SELECT examples.id AS example_id,
                        examples.pattern_id,
@@ -178,31 +219,51 @@ class GrammarExampleVideoJob:
                 JOIN "{self.schema}"."grammar_patterns" AS patterns
                   ON patterns.id = examples.pattern_id
                 WHERE {' AND '.join(conditions)}
-                ORDER BY examples.pattern_id, examples.display_order NULLS LAST, examples.id""",
+                ORDER BY examples.pattern_id, examples.display_order NULLS LAST, examples.id
+                {limit_clause}""",
             params,
         )
 
-    def start_run(self, row: dict[str, Any]) -> int:
-        rows = self.database.execute(
-            """INSERT INTO openclaw.runs
-                (action, pattern_id, pattern_name, status, is_completed, runner_pid, started_at,
-                 object_type, object_id, metadata)
-               VALUES (%s, %s, %s, %s, FALSE, %s, NOW(), %s, %s, %s::jsonb)
-               RETURNING id""",
-            (
-                "generate_grammar_example_video",
-                row["pattern_id"],
-                row["pattern"],
-                "starting",
-                os.getpid(),
-                "grammar_examples",
-                str(row["example_id"]),
-                json.dumps({"schema": self.schema, "display_order": row.get("display_order")}),
-            ),
+    def update_example_video_path(self, example_id: int, video_path: Path) -> None:
+        self.database.update(
+            f"{self.schema}.grammar_examples",
+            {"video_path": str(video_path)},
+            where={"id": example_id},
         )
-        if not rows or not rows[0].get("id"):
-            raise RuntimeError("Could not create example-video run record.")
-        self.run_id = int(rows[0]["id"])
+        self.logger.info(
+            "Updated grammar_examples.video_path example_id=%s path=%s.",
+            example_id,
+            video_path,
+        )
+
+    def start_run(self, row: dict[str, Any]) -> int:
+        timestamp = datetime.now().strftime("%H%M%S%f")
+        self.run_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.run_log_dir / (
+            f"{_safe_name(str(row['pattern']))}_{row['pattern_id']}_{timestamp}_{os.getpid()}_job.log"
+        )
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        self.logger.addHandler(handler)
+        self.run_log_handler = handler
+        self.run_id = insert_run_record(
+            self.database,
+            self.schema,
+            action="generate_pattern",
+            pattern_id=row["pattern_id"],
+            pattern_name=row["pattern"],
+            runner_pid=os.getpid(),
+            object_type="grammar_examples",
+            object_id=str(row["example_id"]),
+            log_path=str(log_path),
+            metadata={
+                "schema": self.schema,
+                "job_type": JOB_ID,
+                "example_id": row["example_id"],
+                "display_order": row.get("display_order"),
+                "job_stage": "starting",
+            },
+        )
         self.current_example_id = int(row["example_id"])
         self.logger.info(
             "Started example video run_id=%s example_id=%s pattern_id=%s pattern=%s display_order=%s.",
@@ -217,41 +278,17 @@ class GrammarExampleVideoJob:
     def set_progress(self, status: str, **metadata: Any) -> None:
         if self.run_id is None:
             return
-        progress = metadata.get("progress_percent")
-        details = " ".join(
-            f"{key}={metadata[key]}"
-            for key in ("clip_part", "video_task_id", "reference_frame_used", "video_path", "error")
-            if metadata.get(key) is not None
-        )
-        self.logger.info(
-            "Example video progress run_id=%s example_id=%s status=%s%s%s.",
-            self.run_id,
-            self.current_example_id,
-            status,
-            f" progress={progress}%" if progress is not None else "",
-            f" {details}" if details else "",
-        )
         terminal = status in {"video_generated", "failed"}
-        self.database.execute(
-            """UPDATE openclaw.runs
-               SET status = %s,
-                   is_completed = %s,
-                   ended_at = CASE WHEN %s THEN NOW() ELSE ended_at END,
-                   runner_pid = CASE WHEN %s THEN NULL ELSE runner_pid END,
-                   output_video = COALESCE(%s, output_video),
-                   metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
-                   error = COALESCE(%s, error)
-               WHERE id = %s""",
-            (
-                status,
-                terminal,
-                terminal,
-                terminal,
-                metadata.get("video_path"),
-                json.dumps(metadata, ensure_ascii=False),
-                metadata.get("error"),
-                self.run_id,
-            ),
+        update_run_record(
+            self.database,
+            self.schema,
+            self.run_id,
+            stage=status,
+            status=status,
+            terminal=terminal,
+            output_video=metadata.get("video_path"),
+            error=metadata.get("error"),
+            metadata=metadata,
         )
 
     def _run_with_retries(self, label: str, operation: Any) -> Any:
@@ -289,10 +326,10 @@ Constraints:
 - video_prompt_1 describes first 10 seconds: setup, action, and character speaking dialogue.
 - video_prompt_2 describes next 10 seconds as continuation, with same named characters,
   faces, clothes, location, props, time, light, camera, and art style; show consequence/payoff.
-- both prompts specify 2D anime, vertical 9:16, no generated lettering/subtitles/logos.
+- both prompts specify 2D anime, vertical 9:16, the example_jp will be show of the bottom path of video (blue backgroud), no generated logos.
 - video_prompt_2 must explicitly continue from the final frame of clip 1 and not reset scene.
-- the named speaker says dialogue naturally in Japanese in clip 1, from its opening, with visible
-  mouth movement synchronized to speech; include no additional spoken lines.
+- the named speaker says dialogue naturally in Japanese in clip 1 or 2, from its opening, with visible
+  mouth movement synchronized to speech; include no additional spoken line
 """
 
         def request() -> dict[str, str]:
@@ -361,15 +398,14 @@ Constraints:
             f"Scene context: {script['scene_context']}\n"
             f"Character continuity bible: {script['character_description']}\n"
             f"Clip {part} of 2, exactly 10 seconds. Vertical 9:16 2D anime. "
+            "Silent video only: generate no dialogue, music, or sound effects. "
             "No generated text, subtitles, or logos.\n"
             f"{script[f'video_prompt_{part}']}\n"
         )
         if part == 1:
             prompt += (
-                f"The character must speak this exact Japanese line from the opening moment: "
-                f"{script['dialogue']}. Finish the sentence within this 10-second clip. "
-                "Generate native spoken dialogue with synchronized visible mouth movement. "
-                "Do not add other spoken lines."
+                f"The character visibly articulates this exact Japanese line from the opening moment: "
+                f"{script['dialogue']}. Finish within this 10-second clip, but generate no audio."
             )
         else:
             prompt += (
@@ -435,7 +471,7 @@ Constraints:
         self,
         script: dict[str, str],
         clips: list[Path],
-        dialogue_source: Path,
+        audio_source: Path,
         destination: Path,
     ) -> None:
         with tempfile.TemporaryDirectory(prefix="grammar-example-") as temp_name:
@@ -486,7 +522,7 @@ Constraints:
             )
             subprocess.run([
                 self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-                "-i", str(combined), "-i", str(dialogue_source),
+                "-i", str(combined), "-i", str(audio_source),
                 "-filter_complex", "[1:a]apad=whole_dur=20,atrim=0:20[a]",
                 "-vf", subtitle_filter,
                 "-map", "0:v:0", "-map", "[a]", "-t", "20",
@@ -512,17 +548,6 @@ Constraints:
             raise RuntimeError(f"ffprobe returned invalid metadata for {path}.")
         return payload
 
-    def _verify_clip_audio(self, clip: Path) -> None:
-        info = self._probe(clip)
-        streams = info.get("streams", [])
-        if not any(stream.get("codec_type") == "audio" for stream in streams):
-            raise RuntimeError(
-                "Clip 1 has no generated dialogue audio; refusing to replace lip-synced speech with voiceover."
-            )
-        duration = float(info.get("format", {}).get("duration", 0))
-        if abs(duration - 10.0) > 0.5:
-            raise RuntimeError(f"Clip 1 duration is {duration:.2f}s; expected a native 10-second clip.")
-
     def _verify_final(self, path: Path) -> dict[str, Any]:
         info = self._probe(path)
         streams = info.get("streams", [])
@@ -545,9 +570,10 @@ Constraints:
         output = self.output_path / f"{stem}.mp4"
         if output.is_file() and not force:
             self.logger.info("Skipping existing video: %s", output)
+            self.update_example_video_path(int(row["example_id"]), output)
             return output
-        self.start_run(row)
         try:
+            self.start_run(row)
             self.set_progress("analyzing_example", progress_percent=5)
             script = self.analyze_example(row)
             script_path = self.output_path / f"{stem}_script.json"
@@ -566,10 +592,10 @@ Constraints:
                 reference = temp / "part1-last-frame.png"
                 clip1 = temp / "part1.mp4"
                 clip2 = temp / "part2.mp4"
+                narration = temp / f"example-audio.{self.audio_extension}"
 
                 self.set_progress("generating_clip_1", progress_percent=20)
                 self._make_clip(script, 1, raw1)
-                self._verify_clip_audio(raw1)
 
                 self.set_progress("extracting_reference_frame", progress_percent=45)
                 self._extract_last_frame(raw1, reference)
@@ -583,14 +609,29 @@ Constraints:
                 self.set_progress("normalizing_and_joining", progress_percent=70)
                 self._run_with_retries("Clip 1 normalization", lambda: self._normalize_clip(raw1, clip1))
                 self._run_with_retries("Clip 2 normalization", lambda: self._normalize_clip(raw2, clip2))
+                self.set_progress("generating_example_audio", progress_percent=78)
+                example_jp = str(row["example_jp"]).strip()
+                audio_bytes = self._run_with_retries(
+                    "Japanese example audio generation",
+                    lambda: text_to_audio(example_jp, config=self.config),
+                )
+                narration.write_bytes(audio_bytes)
+                if narration.stat().st_size == 0:
+                    raise RuntimeError("Audio API produced an empty Japanese example audio file.")
+                self.logger.info(
+                    "Generated Japanese example audio example_id=%s bytes=%s.",
+                    row["example_id"],
+                    narration.stat().st_size,
+                )
                 self.set_progress("rendering_subtitle_audio", progress_percent=80)
                 self._run_with_retries(
                     "Final render",
-                    lambda: self._render_final(script, [clip1, clip2], raw1, output),
+                    lambda: self._render_final(script, [clip1, clip2], narration, output),
                 )
 
             self.set_progress("validating_output", progress_percent=95)
             validation = self._verify_final(output)
+            self.update_example_video_path(int(row["example_id"]), output)
             self.set_progress(
                 "video_generated",
                 progress_percent=100,
@@ -617,6 +658,10 @@ Constraints:
         finally:
             self.run_id = None
             self.current_example_id = None
+            if self.run_log_handler is not None:
+                self.logger.removeHandler(self.run_log_handler)
+                self.run_log_handler.close()
+                self.run_log_handler = None
 
     def close(self) -> None:
         self.database.close()
@@ -628,6 +673,7 @@ def main() -> int:
     parser.add_argument("--schema", help="PostgreSQL schema; defaults to grammar video job schema")
     parser.add_argument("--pattern-id", type=int, help="Generate examples for one grammar pattern")
     parser.add_argument("--example-id", type=int, help="Generate one grammar example")
+    parser.add_argument("--limit", type=int, help="Process at most this many matching grammar examples")
     parser.add_argument("--force", action="store_true", help="Replace existing output videos")
     args = parser.parse_args()
     job: GrammarExampleVideoJob | None = None
@@ -635,12 +681,13 @@ def main() -> int:
         config = load_config(args.config)
         job = GrammarExampleVideoJob(config, schema=args.schema)
         job.logger.info(
-            "Loaded grammar example video job filters pattern_id=%s example_id=%s force=%s.",
+            "Loaded grammar example video job filters pattern_id=%s example_id=%s limit=%s force=%s.",
             args.pattern_id,
             args.example_id,
+            args.limit,
             args.force,
         )
-        rows = job.load_examples(args.pattern_id, args.example_id)
+        rows = job.load_examples(args.pattern_id, args.example_id, args.limit)
         job.logger.info("Found %s grammar examples to process.", len(rows))
         if not rows:
             raise RuntimeError("No matching grammar examples found.")

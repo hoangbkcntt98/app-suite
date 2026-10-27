@@ -1,7 +1,101 @@
 """Shared configuration helpers for app-suite jobs."""
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
+
+_SCHEMA_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+
+
+def runs_table(schema: str) -> str:
+    """Return safely quoted runs table for configured PostgreSQL schema."""
+    if not isinstance(schema, str) or not _SCHEMA_NAME.fullmatch(schema):
+        raise ValueError(f"Invalid PostgreSQL schema name: {schema!r}")
+    return f'"{schema}"."runs"'
+
+
+def insert_run_record(
+    database: Any,
+    schema: str,
+    *,
+    action: str,
+    pattern_id: int,
+    pattern_name: str,
+    runner_pid: int,
+    object_type: str,
+    object_id: str,
+    log_path: str,
+    metadata: dict[str, Any] | None = None,
+) -> int:
+    """Insert a running job record and return its ID."""
+    rows = database.execute(
+        f"""INSERT INTO {runs_table(schema)}
+            (action, object_type, object_id, status, is_completed, log_path, metadata)
+            VALUES (%s, %s, %s, 'starting', FALSE, %s, %s::jsonb)
+            RETURNING id""",
+        (
+            action,
+            object_type,
+            object_id,
+            log_path,
+            json.dumps({
+                **(metadata or {}),
+                "pattern_id": pattern_id,
+                "pattern_name": pattern_name,
+                "runner_pid": runner_pid,
+            }, ensure_ascii=False),
+        ),
+    )
+    if not rows or not isinstance(rows[0], dict) or not rows[0].get("id"):
+        raise RuntimeError("Could not create job run record.")
+    return int(rows[0]["id"])
+
+
+def update_run_record(
+    database: Any,
+    schema: str,
+    run_id: int,
+    *,
+    stage: str,
+    status: str,
+    terminal: bool = False,
+    output_video: str | None = None,
+    error: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    manage_status: bool = True,
+) -> None:
+    """Persist run stage/metadata and optionally manage its status lifecycle."""
+    values = {"job_stage": stage, **(metadata or {})}
+    if output_video is not None:
+        values["video_path"] = output_video
+    if manage_status:
+        database.execute(
+            f"""UPDATE {runs_table(schema)}
+                SET status = %s,
+                    is_completed = %s,
+                    ended_at = CASE WHEN %s THEN NOW() ELSE ended_at END,
+                    error = COALESCE(%s, error),
+                    metadata = COALESCE(metadata, '{{}}'::jsonb) || %s::jsonb
+                WHERE id = %s""",
+            (
+                status,
+                terminal,
+                terminal,
+                error,
+                json.dumps(values, ensure_ascii=False),
+                run_id,
+            ),
+        )
+        return
+
+    database.execute(
+        f"""UPDATE {runs_table(schema)}
+            SET error = COALESCE(%s, error),
+                metadata = COALESCE(metadata, '{{}}'::jsonb) || %s::jsonb
+            WHERE id = %s AND is_completed = FALSE""",
+        (error, json.dumps(values, ensure_ascii=False), run_id),
+    )
 
 
 def job_settings(config: dict[str, Any], job_id: str) -> dict[str, Any]:

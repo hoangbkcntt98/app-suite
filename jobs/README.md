@@ -71,10 +71,12 @@ python jobs/create_grammar_video_jobs.py \
   --pattern-id 7
 ```
 
-`--pattern-id` is optional; without it, the job claims the next available
-grammar pattern. `--schema` overrides `job_config.create_grammar_video_jobs.schema`;
-`database.schema` is fallback when neither is set. Add `--verbose` to enable
-detailed DEBUG logs:
+`--pattern-id` is optional; without it, the job claims the next grammar
+pattern without `video_path`. Add `--force` to allow selecting completed
+patterns and overwrite generated files. Both modes skip patterns with an
+incomplete run. `--schema` overrides
+`job_config.create_grammar_video_jobs.schema`; `database.schema` is fallback
+when neither is set. Add `--verbose` to enable detailed DEBUG logs:
 
 ```bash
 python jobs/create_grammar_video_jobs.py \

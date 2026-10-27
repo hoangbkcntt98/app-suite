@@ -23,7 +23,13 @@ if str(APP_TOOLS_ROOT) not in sys.path:
 if str(JOBS_ROOT) not in sys.path:
     sys.path.insert(0, str(JOBS_ROOT))
 
-from job_interface import get_effective_job_config, get_job_setting
+from job_interface import (
+    get_effective_job_config,
+    get_job_setting,
+    insert_run_record,
+    runs_table,
+    update_run_record,
+)
 from python.ai import call_api, text_to_audio, text_to_image
 from python.config import load_config
 from python.database import DatabasePool
@@ -101,6 +107,7 @@ class GrammarVideoJob:
         if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", self.schema):
             raise ValueError(f"Invalid PostgreSQL schema name: {self.schema!r}")
         self.schema_prefix = f'"{self.schema}"'
+        self.runs_table = runs_table(self.schema)
 
         self.config = get_effective_job_config(config, JOB_ID)
         database_config = self.config.get("database", {})
@@ -115,12 +122,25 @@ class GrammarVideoJob:
         self.ensure_pattern_artifact_columns()
         self.data_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "dataDir", "data"))
         self.output_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "outputDir", "outputs"))
+        self.run_log_dir = _resolve_job_path(
+            get_job_setting(config, JOB_ID, "paths", "runLogDir", "jobs/logs/video-creator/runs")
+        )
         self.date_dir = datetime.now().strftime("%Y%m%d")
         self.data_path = self.data_dir / self.date_dir
         self.output_path = self.output_dir / self.date_dir
         self.pattern: dict[str, Any] | None = None
         self.safe_name = ""
         self.run_id: int | None = None
+        self.pipeline_run_id: int | None = None
+        raw_pipeline_run_id = os.environ.get("VIDEO_PIPELINE_RUN_ID", "").strip()
+        if raw_pipeline_run_id:
+            try:
+                self.pipeline_run_id = int(raw_pipeline_run_id)
+            except ValueError as error:
+                raise ValueError("VIDEO_PIPELINE_RUN_ID must be a positive integer.") from error
+            if self.pipeline_run_id <= 0:
+                raise ValueError("VIDEO_PIPELINE_RUN_ID must be a positive integer.")
+        self.owns_run = self.pipeline_run_id is None
         self.run_log_path: Path | None = None
         self.video_path: str | None = None
         self.logger.debug(
@@ -132,10 +152,6 @@ class GrammarVideoJob:
         )
 
     def ensure_pattern_artifact_columns(self) -> None:
-        self.database.execute(
-            """ALTER TABLE openclaw.runs
-                ADD COLUMN IF NOT EXISTS is_completed BOOLEAN NOT NULL DEFAULT TRUE"""
-        )
         self.database.execute(
             f"""ALTER TABLE {self.schema_prefix}."grammar_patterns"
                 ADD COLUMN IF NOT EXISTS video_path TEXT,
@@ -151,24 +167,33 @@ class GrammarVideoJob:
                 ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ"""
         )
 
-    def claim_next_grammar(self) -> dict[str, Any] | None:
+    def claim_next_grammar(self, *, force: bool = False) -> dict[str, Any] | None:
+        video_path_filter = (
+            "TRUE" if force else "NULLIF(BTRIM(patterns.video_path), '') IS NULL"
+        )
+        selection = "including completed patterns" if force else "without video_path"
         self.logger.info(
-            "Selecting next grammar pattern without video_path from schema %s.",
+            "Selecting next grammar pattern %s from schema %s.",
+            selection,
             self.schema,
         )
+        active_run_filter = "AND runs.id <> %s" if self.pipeline_run_id is not None else ""
+        params = (self.pipeline_run_id,) if self.pipeline_run_id is not None else ()
         rows = self.database.execute(
             f"""SELECT patterns.id AS pattern_id, patterns.pattern
                 FROM {self.schema_prefix}."grammar_patterns" AS patterns
-                WHERE NULLIF(BTRIM(patterns.video_path), '') IS NULL
+                WHERE {video_path_filter}
                   AND NOT EXISTS (
                     SELECT 1
-                    FROM openclaw.runs AS runs
+                    FROM {self.runs_table} AS runs
                     WHERE runs.object_type = 'grammar_patterns'
                       AND runs.object_id = patterns.id::text
                       AND runs.is_completed = FALSE
+                      {active_run_filter}
                   )
                 ORDER BY patterns.id
-                LIMIT 1"""
+                LIMIT 1""",
+            params,
         )
         if not rows:
             self.logger.info("No grammar patterns without video_path.")
@@ -178,11 +203,11 @@ class GrammarVideoJob:
             raise RuntimeError("Database claim returned an invalid row.")
         return row
 
-    def select_pattern(self, pattern_id: int | None) -> None:
+    def select_pattern(self, pattern_id: int | None, *, force: bool = False) -> None:
         if pattern_id is None:
-            self.pattern = self.claim_next_grammar()
+            self.pattern = self.claim_next_grammar(force=force)
             if self.pattern is None:
-                raise RuntimeError("No unprocessed grammar pattern available.")
+                raise RuntimeError("No eligible grammar pattern available.")
         else:
             if pattern_id <= 0:
                 raise ValueError("--pattern-id must be positive.")
@@ -199,6 +224,17 @@ class GrammarVideoJob:
             pattern_name = row.get("pattern")
             if not isinstance(pattern_name, str) or not pattern_name.strip():
                 raise RuntimeError(f"Grammar pattern ID {pattern_id} has no name.")
+            active_runs = self.database.execute(
+                f"""SELECT 1 FROM {self.runs_table}
+                    WHERE object_type = 'grammar_patterns'
+                      AND object_id = %s
+                      AND is_completed = FALSE
+                      AND (%s::bigint IS NULL OR id <> %s)
+                    LIMIT 1""",
+                (str(pattern_id), self.pipeline_run_id, self.pipeline_run_id),
+            )
+            if active_runs:
+                raise RuntimeError(f"Grammar pattern ID {pattern_id} already has an active video run.")
             self.pattern = {
                 "pattern_id": int(row.get("id", pattern_id)),
                 "pattern": pattern_name.strip(),
@@ -214,6 +250,62 @@ class GrammarVideoJob:
             self.pattern["pattern_id"],
             self.data_path,
             self.output_path,
+        )
+        if self.pipeline_run_id is not None:
+            self._attach_pipeline_run()
+
+    def _attach_pipeline_run(self) -> None:
+        """Reuse the app-created run; Node owns its terminal status."""
+        assert self.pattern is not None and self.pipeline_run_id is not None
+        rows = self.database.execute(
+            f"""SELECT id, action, object_type, object_id, is_completed, log_path, metadata
+                FROM {self.runs_table}
+                WHERE id = %s""",
+            (self.pipeline_run_id,),
+        )
+        if not rows or not isinstance(rows[0], dict):
+            raise RuntimeError(f"Video Creator run {self.pipeline_run_id} was not found.")
+        row = rows[0]
+        is_selected_run = (
+            row.get("action") == "generate_pattern"
+            and row.get("object_type") == "grammar_patterns"
+            and str(row.get("object_id") or "") == str(self.pattern["pattern_id"])
+        )
+        is_next_run = (
+            row.get("action") == "create_next"
+            and row.get("object_type") == "grammar_patterns"
+            and row.get("object_id") is None
+        )
+        if (
+            row.get("is_completed") is not False
+            or not (is_selected_run or is_next_run)
+            or not row.get("log_path")
+        ):
+            raise RuntimeError(
+                f"Video Creator run {self.pipeline_run_id} is not an active run for "
+                f"grammar pattern {self.pattern['pattern_id']}."
+            )
+        self.run_id = self.pipeline_run_id
+        self.run_log_path = Path(str(row["log_path"]))
+        if is_next_run:
+            self.database.execute(
+                f"""UPDATE {self.runs_table}
+                   SET object_id = %s,
+                       metadata = COALESCE(metadata, '{{}}'::jsonb) || %s::jsonb
+                   WHERE id = %s AND is_completed = FALSE""",
+                (
+                    str(self.pattern["pattern_id"]),
+                    json.dumps({
+                        "pattern_id": self.pattern["pattern_id"],
+                        "pattern_name": self.pattern["pattern"],
+                    }, ensure_ascii=False),
+                    self.run_id,
+                ),
+            )
+        self.logger.info(
+            "Reusing Video Creator run #%s for grammar pattern_id=%s.",
+            self.run_id,
+            self.pattern["pattern_id"],
         )
 
     def generate_content(self) -> dict[str, Any]:
@@ -679,7 +771,12 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
 
     def start_run(self) -> None:
         assert self.pattern is not None
-        self.run_log_path = self.data_path / (
+        if self.pipeline_run_id is not None:
+            if self.run_id is None:
+                raise RuntimeError("Video Creator parent run was not validated.")
+            return
+        self.run_log_dir.mkdir(parents=True, exist_ok=True)
+        self.run_log_path = self.run_log_dir / (
             f"{self.safe_name}_{datetime.now().strftime('%H%M%S%f')}_{os.getpid()}_job.log"
         )
         handler = logging.FileHandler(self.run_log_path, encoding="utf-8")
@@ -687,27 +784,18 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             "%(asctime)s %(levelname)s %(name)s: %(message)s"
         ))
         self.logger.addHandler(handler)
-        rows = self.database.execute(
-            """INSERT INTO openclaw.runs
-                (action, pattern_id, pattern_name, status, is_completed, runner_pid, started_at,
-                 object_type, object_id, log_path, metadata)
-               VALUES (%s, %s, %s, %s, FALSE, %s, NOW(), %s, %s, %s, %s::jsonb)
-               RETURNING id""",
-            (
-                "generate_pattern",
-                self.pattern["pattern_id"],
-                self.pattern["pattern"],
-                "starting",
-                os.getpid(),
-                "grammar_patterns",
-                str(self.pattern["pattern_id"]),
-                str(self.run_log_path),
-                json.dumps({"schema": self.schema}, ensure_ascii=False),
-            ),
+        self.run_id = insert_run_record(
+            self.database,
+            self.schema,
+            action="generate_pattern",
+            pattern_id=self.pattern["pattern_id"],
+            pattern_name=self.pattern["pattern"],
+            runner_pid=os.getpid(),
+            object_type="grammar_patterns",
+            object_id=str(self.pattern["pattern_id"]),
+            log_path=str(self.run_log_path),
+            metadata={"schema": self.schema},
         )
-        if not rows or not isinstance(rows[0], dict) or not rows[0].get("id"):
-            raise RuntimeError("Could not create grammar job run record.")
-        self.run_id = int(rows[0]["id"])
         self.logger.info(
             "Created run #%s for grammar pattern_id=%s (pid=%s).",
             self.run_id,
@@ -719,8 +807,8 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         if self.run_id is None or not values:
             return
         self.database.execute(
-            """UPDATE openclaw.runs
-               SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+            f"""UPDATE {self.runs_table}
+               SET metadata = COALESCE(metadata, '{{}}'::jsonb) || %s::jsonb
                WHERE id = %s""",
             (json.dumps(values, ensure_ascii=False), self.run_id),
         )
@@ -757,11 +845,6 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         self.update_run_metadata(**values)
         if "video_path" in values:
             self.video_path = str(values["video_path"])
-            if self.run_id is not None:
-                self.database.execute(
-                    """UPDATE openclaw.runs SET output_video = %s WHERE id = %s""",
-                    (self.video_path, self.run_id),
-                )
 
     def save_facebook_result(self, result: dict[str, Any]) -> None:
         assert self.pattern is not None
@@ -793,8 +876,8 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             )
             if self.run_id is not None:
                 db.execute(
-                    """UPDATE openclaw.runs
-                       SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                    f"""UPDATE {self.runs_table}
+                       SET metadata = COALESCE(metadata, '{{}}'::jsonb) || %s::jsonb
                        WHERE id = %s""",
                     (json.dumps({"facebook": result}, ensure_ascii=False), self.run_id),
                 )
@@ -810,15 +893,15 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             status,
         )
         terminal = status in {"video_generated", "content_generated"}
-        self.database.execute(
-            """UPDATE openclaw.runs
-               SET status = %s,
-                   is_completed = CASE WHEN %s THEN TRUE ELSE FALSE END,
-                   ended_at = CASE WHEN %s THEN NOW() ELSE ended_at END,
-                   runner_pid = CASE WHEN %s THEN NULL ELSE runner_pid END,
-                   output_video = COALESCE(%s, output_video)
-               WHERE id = %s""",
-            (status, terminal, terminal, terminal, self.video_path, self.run_id),
+        update_run_record(
+            self.database,
+            self.schema,
+            self.run_id,
+            stage=status,
+            status=status,
+            terminal=terminal,
+            output_video=self.video_path,
+            manage_status=self.owns_run,
         )
 
     def fail(self, error: str) -> None:
@@ -826,19 +909,26 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             self.logger.debug("Skipping failure status update; no run record was created.")
             return
         self.logger.info("Marking run_id=%s as failed.", self.run_id)
-        self.database.execute(
-            """UPDATE openclaw.runs
-               SET status = 'failed', is_completed = TRUE, error = %s,
-                   ended_at = NOW(), runner_pid = NULL
-               WHERE id = %s""",
-            (error[:4000], self.run_id),
+        update_run_record(
+            self.database,
+            self.schema,
+            self.run_id,
+            stage="failed",
+            status="failed",
+            terminal=True,
+            error=error[:4000],
+            manage_status=self.owns_run,
         )
 
-    def run(self, pattern_id: int | None = None) -> Path:
+    def run(self, pattern_id: int | None = None, *, force: bool = False) -> Path:
         started_at = perf_counter()
-        self.logger.info("Grammar video job started (pattern_id=%s).", pattern_id or "next")
+        self.logger.info(
+            "Grammar video job started (pattern_id=%s force=%s).",
+            pattern_id or "next",
+            force,
+        )
         try:
-            self.select_pattern(pattern_id)
+            self.select_pattern(pattern_id, force=force)
             self.start_run()
             content = self.generate_content()
             self.update_status("examples_generated")
@@ -937,6 +1027,11 @@ def main() -> int:
     )
     parser.add_argument("--pattern-id", type=int, help="Process one grammar ID instead of claiming next")
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow selecting a pattern with video_path and replace its generated artifacts",
+    )
+    parser.add_argument(
         "--sync-example",
         action="store_true",
         help="Sync examples for patterns with video_path from dataDir/YYYYmmdd/{grammar_pattern}.json",
@@ -980,7 +1075,7 @@ def main() -> int:
                 job.database.close()
         if args.generate_content_only:
             try:
-                job.select_pattern(args.pattern_id)
+                job.select_pattern(args.pattern_id, force=args.force)
                 job.start_run()
                 content = job.generate_content()
                 job.update_status("content_generated")
@@ -998,7 +1093,7 @@ def main() -> int:
                 raise
             finally:
                 job.database.close()
-        output = job.run(args.pattern_id)
+        output = job.run(args.pattern_id, force=args.force)
         publish_results = job.publish_video(
             output,
             facebook_payload=facebook_payload,

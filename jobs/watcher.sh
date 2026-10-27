@@ -89,7 +89,7 @@ if [[ "$JOB_NAME" != "$WATCHER_NAME.py" ]]; then
   exit 2
 fi
 
-INTERVAL=10
+INTERVAL=300
 CONFIG_PATH="$DEFAULT_CONFIG"
 JOB_ARGS=()
 while (($#)); do

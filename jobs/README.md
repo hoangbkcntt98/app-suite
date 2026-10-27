@@ -1,5 +1,10 @@
 # Jobs
 
+Detailed job behavior:
+
+- [Grammar lesson generator](create_grammar_video_jobs_readme.md)
+- [Grammar example video generator](create_grammar_example_video_jobs_readme.md)
+
 ## Grammar video job
 
 Shared job configuration helpers live in `jobs/job_interface.py`. Each job
@@ -78,6 +83,47 @@ python jobs/create_grammar_video_jobs.py \
   --pattern-id 7 \
   --verbose
 ```
+
+## Grammar example video job
+
+`create_grammar_example_video_jobs.py` generates one 20-second Japanese
+grammar-example video from `grammar_examples.example_ja`. It analyzes the
+sentence with Chat AI, generates two consecutive 10-second clips, adds the
+Japanese dialogue subtitle with FFmpeg, then validates and saves the MP4 under
+`outputDir/YYYYMMDD`.
+
+Run from the repository root:
+
+```bash
+jobs/app-tools/.venv/bin/python jobs/create_grammar_example_video_jobs.py \
+  --config jobs/app-tools/config.json \
+  --schema openclaw \
+  --example-id 1801
+```
+
+`--example-id` and `--pattern-id` are optional filters. Add `--force` to
+replace an existing output video. Configure AI chat/video/audio services under
+`ai` in app-tools config; job-specific overrides belong under
+`job_config.create_grammar_example_video_jobs`.
+
+## Grammar job watcher
+
+Run the grammar job repeatedly with app-tools virtualenv Python. Watcher log,
+PID, interval, and lock files live beside configured `logger.file`; lock
+prevents overlapping runs.
+
+```bash
+jobs/watcher.sh start create_grammar_video_jobs.py --interval 10 \
+  --config jobs/app-tools/config.json
+jobs/watcher.sh status create_grammar_video_jobs.py \
+  --config jobs/app-tools/config.json
+jobs/watcher.sh stop create_grammar_video_jobs.py \
+  --config jobs/app-tools/config.json
+```
+
+Pass normal job options after watcher options, for example `--schema openclaw`.
+Watcher currently supports `create_grammar_video_jobs.py`; its output appends
+to `create_grammar_video_jobs_watcher.log`.
 
 ## Optional social publishing
 

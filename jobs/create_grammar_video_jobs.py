@@ -47,6 +47,17 @@ def _safe_name(value: str, fallback: str) -> str:
     return name or fallback
 
 
+def _resolve_job_path(value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    for base in (REPOSITORY_ROOT, JOBS_ROOT):
+        candidate = base / path
+        if candidate.exists():
+            return candidate
+    return REPOSITORY_ROOT / path
+
+
 def _parse_content(response: Any) -> dict[str, Any]:
     if not isinstance(response, dict):
         raise RuntimeError("AI response must be a JSON object.")
@@ -86,7 +97,7 @@ def _parse_publish_payload(value: Any, option: str) -> dict[str, Any] | None:
 
 class GrammarVideoJob:
     def __init__(self, config: dict[str, Any], schema: str | None = None):
-        self.schema = schema or get_job_setting(config, JOB_ID, "database", "schema", "default")
+        self.schema = schema or get_job_setting(config, JOB_ID, "database", "schema", "openclaw")
         if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", self.schema):
             raise ValueError(f"Invalid PostgreSQL schema name: {self.schema!r}")
         self.schema_prefix = f'"{self.schema}"'
@@ -102,8 +113,8 @@ class GrammarVideoJob:
         self.database = DatabasePool.create(self.config)
         self.logger.info("PostgreSQL pool ready.")
         self.ensure_pattern_artifact_columns()
-        self.data_dir = Path(get_job_setting(config, JOB_ID, "paths", "dataDir", "data"))
-        self.output_dir = Path(get_job_setting(config, JOB_ID, "paths", "outputDir", "outputs"))
+        self.data_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "dataDir", "data"))
+        self.output_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "outputDir", "outputs"))
         self.date_dir = datetime.now().strftime("%Y%m%d")
         self.data_path = self.data_dir / self.date_dir
         self.output_path = self.output_dir / self.date_dir
@@ -193,7 +204,8 @@ class GrammarVideoJob:
                 "pattern": pattern_name.strip(),
             }
         assert self.pattern is not None
-        self.safe_name = _safe_name(str(self.pattern["pattern"]), str(self.pattern["pattern_id"]))
+        pattern_id = int(self.pattern["pattern_id"])
+        self.safe_name = f"{pattern_id}_{_safe_name(str(self.pattern['pattern']), str(pattern_id))}"
         self.data_path.mkdir(parents=True, exist_ok=True)
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.logger.info(
@@ -248,6 +260,7 @@ class GrammarVideoJob:
             content_path,
         )
         self.save_learning_content(content)
+        self.save_examples(int(self.pattern["pattern_id"]), content["examples"])
         self.update_pattern_artifacts(content_path=str(content_path))
         return content
 
@@ -277,6 +290,98 @@ class GrammarVideoJob:
             ),
         )
         self.logger.info("Saved generated learning content for pattern_id=%s.", self.pattern["pattern_id"])
+
+    def save_examples(self, pattern_id: int, examples: list[dict[str, Any]]) -> None:
+        if not examples:
+            raise ValueError(f"No examples to save for pattern_id={pattern_id}.")
+        values_sql = ", ".join(["(%s, %s, %s, %s, %s)"] * len(examples))
+        params: list[Any] = []
+        for display_order, example in enumerate(examples, start=1):
+            params.extend((
+                pattern_id,
+                example["example_ja"],
+                example["note"],
+                example["example_vi"],
+                display_order,
+            ))
+        self.database.execute(
+            f"""WITH removed AS (
+                    DELETE FROM {self.schema_prefix}."grammar_examples"
+                    WHERE pattern_id = %s
+                )
+                INSERT INTO {self.schema_prefix}."grammar_examples"
+                    (pattern_id, example_ja, note, example_vi, display_order)
+                VALUES {values_sql}""",
+            (pattern_id, *params),
+        )
+        self.logger.info("Saved %s examples for pattern_id=%s.", len(examples), pattern_id)
+
+    def find_examples_file(self, pattern_id: int, pattern: str) -> Path | None:
+        safe_name = _safe_name(pattern, pattern)
+        filenames = (
+            f"{pattern_id}_{safe_name}_content.json",
+            f"{pattern_id}_{pattern}.json",
+            f"{pattern}.json",
+            f"{safe_name}_content.json",
+            f"{pattern}_content.json",
+        )
+        date_dirs = sorted(
+            (
+                path for path in self.data_dir.iterdir()
+                if path.is_dir() and re.fullmatch(r"\d{8}", path.name)
+            ),
+            key=lambda path: path.name,
+            reverse=True,
+        ) if self.data_dir.is_dir() else []
+        for date_dir in date_dirs:
+            for filename in filenames:
+                candidate = date_dir / filename
+                if candidate.is_file():
+                    return candidate
+        return None
+
+    def sync_examples(self) -> int:
+        rows = self.database.execute(
+            f"""SELECT id AS pattern_id, pattern
+                FROM {self.schema_prefix}."grammar_patterns"
+                WHERE NULLIF(BTRIM(video_path), '') IS NOT NULL
+                ORDER BY id"""
+        )
+        synced = 0
+        for row in rows:
+            pattern_id = int(row["pattern_id"])
+            pattern = row["pattern"]
+            example_path = self.find_examples_file(pattern_id, pattern)
+            if example_path is None:
+                self.logger.info(
+                    "Skipping pattern_id=%s; no dated {pattern}.json or *_content.json found under %s.",
+                    pattern_id,
+                    self.data_dir,
+                )
+                continue
+            try:
+                payload = json.loads(example_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                self.logger.error("Skipping invalid example file %s: %s", example_path, error)
+                continue
+            examples = payload.get("examples") if isinstance(payload, dict) else None
+            if not isinstance(examples, list) or not examples or any(
+                not isinstance(item, dict)
+                or any(
+                    not isinstance(item.get(key), str) or not item[key].strip()
+                    for key in ("example_ja", "note", "example_vi")
+                )
+                for item in examples
+            ):
+                self.logger.error(
+                    "Skipping %s; examples must be a non-empty list of complete examples.",
+                    example_path,
+                )
+                continue
+            self.save_examples(pattern_id, examples)
+            synced += 1
+        self.logger.info("Synchronized examples for %s grammar patterns.", synced)
+        return synced
 
     def write_scripts(self, content: dict[str, Any]) -> list[Path]:
         assert self.pattern is not None
@@ -832,6 +937,11 @@ def main() -> int:
     )
     parser.add_argument("--pattern-id", type=int, help="Process one grammar ID instead of claiming next")
     parser.add_argument(
+        "--sync-example",
+        action="store_true",
+        help="Sync examples for patterns with video_path from dataDir/YYYYmmdd/{grammar_pattern}.json",
+    )
+    parser.add_argument(
         "--generate_content",
         "---generate_content",
         dest="generate_content_only",
@@ -861,6 +971,13 @@ def main() -> int:
         job = GrammarVideoJob(config, schema=args.schema)
         if args.verbose:
             job.logger.setLevel(logging.DEBUG)
+        if args.sync_example:
+            try:
+                synced = job.sync_examples()
+                print(json.dumps({"success": True, "synced": synced}, ensure_ascii=False))
+                return 0
+            finally:
+                job.database.close()
         if args.generate_content_only:
             try:
                 job.select_pattern(args.pattern_id)

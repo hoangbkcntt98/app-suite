@@ -1,43 +1,43 @@
-import { closeSync, openSync } from "fs";
-import { dirname } from "path";
+import { resolve } from "path";
 import { spawn } from "child_process";
 import { pool } from "@manga/lib/db";
 
-const crawlerScript =
-  process.env.MANGA_CRAWLER_SCRIPT ||
-  "/home/opc/manga-crawler/generic_manga_crawler.py";
+const crawlerJob =
+  process.env.MANGA_CRAWLER_JOB || "jobs/manga_crawler_jobs.py";
+const crawlerJobPath = resolve(process.cwd(), crawlerJob);
+const crawlerJobPython =
+  process.env.MANGA_CRAWLER_JOB_PYTHON || "python3";
 const crawlerPython = process.env.MANGA_CRAWLER_PYTHON || "python3";
 const crawlerLog =
-  process.env.MANGA_CRAWLER_LOG || "/home/opc/manga-crawler/crawler.log";
+  process.env.MANGA_CRAWLER_LOG || resolve(process.cwd(), "jobs/manga_crawler.log");
 
 export function spawnCrawler(args: string[]) {
-  const logFd = openSync(crawlerLog, "a");
-  try {
-    const databaseDialect =
-      process.env.MANGA_DB_DIALECT?.toLowerCase() === "mysql" ? "mysql" : "postgres";
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      DB_HOST: process.env.DB_HOST || process.env.MANGA_DB_HOST,
-      DB_PORT:
-        process.env.DB_PORT ||
-        process.env.MANGA_DB_PORT ||
-        (databaseDialect === "mysql" ? "3306" : "5432"),
-      DB_NAME: process.env.DB_NAME || process.env.MANGA_DB_NAME,
-      DB_USER: process.env.DB_USER || process.env.MANGA_DB_USER,
-      DB_PASSWORD: process.env.DB_PASSWORD || process.env.MANGA_DB_PASSWORD,
-    };
-    const child = spawn(crawlerPython, [crawlerScript, ...args], {
-      cwd: dirname(crawlerScript),
+  const databaseDialect =
+    process.env.MANGA_DB_DIALECT?.toLowerCase() === "mysql" ? "mysql" : "postgres";
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    DB_HOST: process.env.DB_HOST || process.env.MANGA_DB_HOST,
+    DB_PORT:
+      process.env.DB_PORT ||
+      process.env.MANGA_DB_PORT ||
+      (databaseDialect === "mysql" ? "3306" : "5432"),
+    DB_NAME: process.env.DB_NAME || process.env.MANGA_DB_NAME,
+    DB_USER: process.env.DB_USER || process.env.MANGA_DB_USER,
+    DB_PASSWORD: process.env.DB_PASSWORD || process.env.MANGA_DB_PASSWORD,
+  };
+  const child = spawn(
+    crawlerJobPython,
+    [crawlerJobPath, ...args, "--log-file", crawlerLog, "--python-bin", crawlerPython],
+    {
+      cwd: process.cwd(),
       detached: true,
       env,
-      stdio: ["ignore", logFd, logFd],
-    });
+      stdio: "ignore",
+    }
+  );
 
-    child.once("spawn", () => child.unref());
-    return child;
-  } finally {
-    closeSync(logFd);
-  }
+  child.once("spawn", () => child.unref());
+  return child;
 }
 
 export function getCrawlerLogPath() {

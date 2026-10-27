@@ -72,13 +72,12 @@ function getErrorMessage(error: unknown) {
 
 async function translateWithRetry(
   image: ImageRecord,
-  requestUrl: string,
   selection: ImageAiSelection
 ) {
   let attempt = 0;
   while (true) {
     try {
-      return await translateImageWithAi({ image, requestUrl, selection });
+      return await translateImageWithAi({ image, selection });
     } catch (error) {
       attempt += 1;
       if (!isRateLimitError(error) || attempt > BULK_TRANSLATE_RETRY_COUNT) {
@@ -204,6 +203,7 @@ async function getImagesToTranslate(titleId: string) {
     `SELECT
        i.id,
        i.src,
+       i.content_type,
        i.local_path,
        i.chapter_id,
        c.manga_title_id,
@@ -226,7 +226,6 @@ async function getImagesToTranslate(titleId: string) {
 
 async function runBulkTranslate(
   titleId: string,
-  requestUrl: string,
   selection: ImageAiSelection
 ) {
   if (runningJobs.has(titleId)) return;
@@ -306,7 +305,7 @@ async function runBulkTranslate(
           skipped += 1;
           translated += 1;
         } else {
-          await translateWithRetry(image, requestUrl, selection);
+          await translateWithRetry(image, selection);
           translated += 1;
         }
       } catch (error) {
@@ -457,7 +456,7 @@ export async function POST(
     return responseFromJob(currentJob);
   }
 
-  void runBulkTranslate(id, request.url, selection);
+  void runBulkTranslate(id, selection);
   return responseFromJob(await getJob(id, selection));
 }
 

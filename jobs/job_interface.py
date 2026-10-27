@@ -15,6 +15,13 @@ def runs_table(schema: str) -> str:
     return f'"{schema}"."runs"'
 
 
+def ensure_progress_column(database: Any, schema: str) -> None:
+    """Add progress column for existing runs tables."""
+    database.execute(
+        f"ALTER TABLE {runs_table(schema)} ADD COLUMN IF NOT EXISTS progress INTEGER"
+    )
+
+
 def insert_run_record(
     database: Any,
     schema: str,
@@ -29,10 +36,11 @@ def insert_run_record(
     metadata: dict[str, Any] | None = None,
 ) -> int:
     """Insert a running job record and return its ID."""
+    ensure_progress_column(database, schema)
     rows = database.execute(
         f"""INSERT INTO {runs_table(schema)}
-            (action, object_type, object_id, status, is_completed, log_path, metadata)
-            VALUES (%s, %s, %s, 'starting', FALSE, %s, %s::jsonb)
+            (action, object_type, object_id, status, is_completed, progress, log_path, metadata)
+            VALUES (%s, %s, %s, 'starting', FALSE, 1, %s, %s::jsonb)
             RETURNING id""",
         (
             action,
@@ -50,6 +58,18 @@ def insert_run_record(
     if not rows or not isinstance(rows[0], dict) or not rows[0].get("id"):
         raise RuntimeError("Could not create job run record.")
     return int(rows[0]["id"])
+
+
+def update_progress(database: Any, schema: str, run_id: int, progress: int) -> None:
+    """Persist integer job progress from 1 through 100."""
+    if isinstance(progress, bool) or not isinstance(progress, int) or not 1 <= progress <= 100:
+        raise ValueError("progress must be an integer from 1 to 100")
+    database.execute(
+        f"""UPDATE {runs_table(schema)}
+            SET progress = %s
+            WHERE id = %s AND is_completed = FALSE""",
+        (progress, run_id),
+    )
 
 
 def update_run_record(

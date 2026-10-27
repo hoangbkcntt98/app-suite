@@ -95,8 +95,9 @@ relative to `jobs/`. FFmpeg must be installed and available on `PATH`.
 Run `status` stores current stage (`starting`, `examples_generated`,
 `script_generated`, `assets_generated`, `video_generated`, or `failed`).
 `is_completed` stays false during work and becomes true at terminal stage.
-Detailed stage and artifact paths are stored in `metadata`. The logger writes
-shared logs and a per-run log.
+`progress` advances from 1 to 100 at major stages and is logged to the per-run
+log file. Detailed stage and artifact paths are stored in `metadata`. The
+logger writes shared logs and a per-run log.
 
 When launched by Video Creator, `VIDEO_PIPELINE_RUN_ID` identifies run row
 already created by app. Job validates row against selected grammar pattern,

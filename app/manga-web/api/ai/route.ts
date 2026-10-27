@@ -92,14 +92,12 @@ export async function POST(request: Request) {
     if (body.action === "translate") {
       apiResponse = await translateImageWithAi({
         image,
-        requestUrl: request.url,
         selection,
       });
     } else {
       const { content, model } = await requestImageAi({
         image,
         message: body.message,
-        requestUrl: request.url,
         selection,
       });
       apiResponse = { kind: "chat", content };

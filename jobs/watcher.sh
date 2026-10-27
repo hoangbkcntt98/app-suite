@@ -2,20 +2,37 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT_PATH="$ROOT_DIR/jobs/create_grammar_video_jobs.py"
 PYTHON_PATH="$ROOT_DIR/jobs/app-tools/.venv/bin/python"
 DEFAULT_CONFIG="$ROOT_DIR/jobs/app-tools/config.json"
-WATCHER_NAME="create_grammar_video_jobs"
+JOB_NAME="create_grammar_video_jobs.py"
+
+configure_job() {
+  case "$1" in
+    create_grammar_video_jobs.py)
+      JOB_SCRIPT="$ROOT_DIR/jobs/create_grammar_video_jobs.py"
+      WATCHER_NAME="create_grammar_video_jobs"
+      ;;
+    create_grammar_example_video_jobs.py)
+      JOB_SCRIPT="$ROOT_DIR/jobs/create_grammar_example_video_jobs.py"
+      WATCHER_NAME="create_grammar_example_video_jobs"
+      ;;
+    *)
+      echo "Unsupported job: $1" >&2
+      exit 2
+      ;;
+  esac
+}
 
 usage() {
   cat <<'EOF'
 Usage:
-  jobs/watcher.sh start create_grammar_video_jobs.py [--interval SECONDS] [job options...]
-  jobs/watcher.sh stop  create_grammar_video_jobs.py [--config PATH]
-  jobs/watcher.sh status create_grammar_video_jobs.py [--config PATH]
+  jobs/watcher.sh start JOB.py [--interval SECONDS] [job options...]
+  jobs/watcher.sh stop  JOB.py [--config PATH]
+  jobs/watcher.sh status JOB.py [--config PATH]
 
 Example:
   jobs/watcher.sh start create_grammar_video_jobs.py --interval 10 --config jobs/app-tools/config.json
+  jobs/watcher.sh start create_grammar_example_video_jobs.py --interval 10 --config jobs/app-tools/config.json
 EOF
 }
 
@@ -26,7 +43,9 @@ if [[ "${1:-}" == "__watch" ]]; then
   LOCK_FILE="$3"
   INTERVAL="$4"
   CONFIG_PATH="$5"
-  shift 5
+  JOB_NAME="$6"
+  configure_job "$JOB_NAME"
+  shift 6
   JOB_ARGS=("$@")
   cd -- "$ROOT_DIR"
   exec 9>"$LOCK_FILE"
@@ -46,7 +65,7 @@ if [[ "${1:-}" == "__watch" ]]; then
   while true; do
     if flock -n 9; then
       printf '%s Starting %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$WATCHER_NAME" >>"$LOG_FILE"
-      "$PYTHON_PATH" "$SCRIPT_PATH" --config "$CONFIG_PATH" "${JOB_ARGS[@]}" >>"$LOG_FILE" 2>&1 &
+      "$PYTHON_PATH" "$JOB_SCRIPT" --config "$CONFIG_PATH" "${JOB_ARGS[@]}" >>"$LOG_FILE" 2>&1 &
       child_pid=$!
       if wait "$child_pid"; then
         result=0
@@ -79,15 +98,11 @@ case "$ACTION" in
   *) usage >&2; exit 2 ;;
 esac
 
-JOB_NAME="$WATCHER_NAME.py"
 if [[ $# -gt 0 && "$1" != --* ]]; then
   JOB_NAME="$(basename -- "$1")"
   shift
 fi
-if [[ "$JOB_NAME" != "$WATCHER_NAME.py" ]]; then
-  echo "Unsupported job: $JOB_NAME" >&2
-  exit 2
-fi
+configure_job "$JOB_NAME"
 
 INTERVAL=300
 CONFIG_PATH="$DEFAULT_CONFIG"
@@ -147,16 +162,17 @@ if [[ "$CONFIG_PATH" != /* ]]; then
 fi
 
 LOG_DIR="$(
-  python3 - "$CONFIG_PATH" "$ROOT_DIR" <<'PY'
+  python3 - "$CONFIG_PATH" "$ROOT_DIR" "$WATCHER_NAME" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config_path = Path(sys.argv[1])
 root = Path(sys.argv[2])
+job_name = sys.argv[3]
 with config_path.open(encoding="utf-8") as stream:
     config = json.load(stream)
-job = config.get("job_config", {}).get("create_grammar_video_jobs", {})
+job = config.get("job_config", {}).get(job_name, {})
 job_logger = job.get("logger", {})
 shared_logger = config.get("logger", {})
 log_file = job_logger.get("file") if isinstance(job_logger, dict) else None
@@ -220,7 +236,7 @@ case "$ACTION" in
     fi
     rm -f -- "$PID_FILE"
     printf '%s\n' "$INTERVAL" >"$INTERVAL_FILE"
-    nohup "$ROOT_DIR/jobs/watcher.sh" __watch "$LOG_DIR" "$LOG_FILE" "$LOCK_FILE" "$INTERVAL" "$CONFIG_PATH" "${JOB_ARGS[@]}" \
+    nohup "$ROOT_DIR/jobs/watcher.sh" __watch "$LOG_DIR" "$LOG_FILE" "$LOCK_FILE" "$INTERVAL" "$CONFIG_PATH" "$JOB_NAME" "${JOB_ARGS[@]}" \
       >/dev/null 2>&1 &
     echo "$!" >"$PID_FILE"
     echo "started pid=$! interval=${INTERVAL}s log=$LOG_FILE lock=$LOCK_FILE"

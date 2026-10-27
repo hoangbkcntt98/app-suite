@@ -6,7 +6,6 @@ import {
 import { readFile } from "fs/promises";
 import { extname } from "path";
 import { pool } from "@manga/lib/db";
-import { apiPath } from "@manga/lib/paths";
 import {
   getStoredAiModel,
   resolveImageAiSelection,
@@ -21,9 +20,20 @@ export type ApiResponse = {
   content: unknown;
 };
 
+function isTranslationResponse(value: unknown): value is ApiResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const response = value as { kind?: unknown; content?: unknown };
+  if (response.kind !== "translation" || !response.content) return false;
+  if (typeof response.content !== "object" || Array.isArray(response.content)) {
+    return false;
+  }
+  return Array.isArray((response.content as { items?: unknown }).items);
+}
+
 export type ImageRecord = {
   id: string;
   src: string;
+  content_type: string | null;
   local_path: string | null;
   chapter_id: string;
   manga_title_id: string;
@@ -111,6 +121,7 @@ export async function getAiImage(imageId: string) {
     `SELECT
        i.id,
        i.src,
+       i.content_type,
        i.local_path,
        i.chapter_id,
        c.manga_title_id,
@@ -142,24 +153,26 @@ export async function getCachedImageTranslation(
     [imageId, model ?? null]
   );
 
-  const response = cachedResult.rows[0]?.response ?? null;
+  let response: unknown = cachedResult.rows[0]?.response ?? null;
   if (typeof response === "string") {
-    return parseLooseJson<ApiResponse>(response);
+    try {
+      response = parseLooseJson<unknown>(response);
+    } catch {
+      return null;
+    }
   }
-  return response;
+  return isTranslationResponse(response) ? response : null;
 }
 
 export async function requestOpenClaw({
   image,
   message,
   model: requestedModel,
-  requestUrl,
   translate,
 }: {
   image: ImageRecord;
   message?: string;
   model?: string;
-  requestUrl: string;
   translate: boolean;
 }) {
   const apiKey =
@@ -174,6 +187,7 @@ export async function requestOpenClaw({
   const text = translate
     ? TRANSLATE_PROMPT
     : `Hãy trả lời bằng tiếng Việt: ${message?.trim() ?? ""}`;
+  const imageDataUrl = await loadImageForOpenClaw(image);
 
   const payload = {
     model,
@@ -187,10 +201,7 @@ export async function requestOpenClaw({
           {
             type: "image_url",
             image_url: {
-              url:
-                image.store_images_locally && image.local_path
-                  ? new URL(apiPath(`/api/images/${image.id}`), requestUrl).toString()
-                  : image.src,
+              url: imageDataUrl,
             },
           },
         ],
@@ -238,7 +249,47 @@ function imageFormatFrom(contentType: string | null, path: string): ImageFormat 
   if (extension === ".jpg" || extension === ".jpeg") return "jpeg";
   if (extension === ".gif") return "gif";
   if (extension === ".webp") return "webp";
-  throw new Error("Amazon Bedrock does not support this image format.");
+  throw new Error("The AI provider does not support this image format.");
+}
+
+async function loadImageForOpenClaw(image: ImageRecord) {
+  let bytes: Buffer;
+  let contentType = image.content_type;
+  let path = image.src;
+
+  if (image.store_images_locally && image.local_path) {
+    path = image.local_path;
+    bytes = await readFile(image.local_path);
+  } else {
+    const imageUrl = new URL(image.src);
+    const response = await fetch(imageUrl, {
+      cache: "no-store",
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        Referer: `${imageUrl.origin}/`,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Could not download image for OpenClaw (${response.status}).`);
+    }
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > 20 * 1024 * 1024) {
+      throw new Error("Image is too large to send to OpenClaw.");
+    }
+    bytes = Buffer.from(await response.arrayBuffer());
+    contentType = response.headers.get("content-type") || contentType;
+  }
+
+  if (bytes.length > 20 * 1024 * 1024) {
+    throw new Error("Image is too large to send to OpenClaw.");
+  }
+
+  const format = imageFormatFrom(contentType, path);
+  const mimeType = format === "jpeg" ? "image/jpeg" : `image/${format}`;
+  return `data:${mimeType};base64,${bytes.toString("base64")}`;
 }
 
 async function loadImageForBedrock(image: ImageRecord) {
@@ -386,12 +437,10 @@ export async function requestOpenClawText({
 export async function requestImageAi({
   image,
   message,
-  requestUrl,
   selection: requestedSelection,
 }: {
   image: ImageRecord;
   message: string;
-  requestUrl: string;
   selection?: ImageAiSelection;
 }) {
   const selection = requestedSelection ?? resolveImageAiSelection();
@@ -409,7 +458,6 @@ export async function requestImageAi({
     image,
     message,
     model: selection.model,
-    requestUrl,
     translate: false,
   });
 }
@@ -492,11 +540,9 @@ export async function saveAiResponse({
 
 export async function translateImageWithAi({
   image,
-  requestUrl,
   selection: requestedSelection,
 }: {
   image: ImageRecord;
-  requestUrl: string;
   selection?: ImageAiSelection;
 }) {
   const selection = requestedSelection ?? resolveImageAiSelection();
@@ -512,18 +558,30 @@ export async function translateImageWithAi({
       : await requestOpenClaw({
           image,
           model: selection.model,
-          requestUrl,
           translate: true,
         });
 
   let apiResponse: ApiResponse;
   try {
+    const translation = parseLooseJson<unknown>(content);
+    if (
+      !translation ||
+      typeof translation !== "object" ||
+      Array.isArray(translation) ||
+      !Array.isArray((translation as { items?: unknown }).items)
+    ) {
+      throw new Error("AI response is missing the translation items.");
+    }
     apiResponse = {
       kind: "translation",
-      content: parseLooseJson(content),
+      content: translation,
     };
-  } catch {
-    apiResponse = { kind: "chat", content };
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Image translation failed: ${error.message}`
+        : "Image translation failed: invalid AI response."
+    );
   }
 
   await saveAiResponse({

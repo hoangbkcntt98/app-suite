@@ -26,8 +26,10 @@ if str(JOBS_ROOT) not in sys.path:
 from job_interface import (
     get_effective_job_config,
     get_job_setting,
+    ensure_progress_column,
     insert_run_record,
     runs_table,
+    update_progress,
     update_run_record,
 )
 from python.ai import call_api, text_to_audio, text_to_image
@@ -119,6 +121,7 @@ class GrammarVideoJob:
         self.logger.info("Opening PostgreSQL pool (schema=%s).", self.schema)
         self.database = DatabasePool.create(self.config)
         self.logger.info("PostgreSQL pool ready.")
+        ensure_progress_column(self.database, self.schema)
         self.ensure_pattern_artifact_columns()
         self.data_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "dataDir", "data"))
         self.output_dir = _resolve_job_path(get_job_setting(config, JOB_ID, "paths", "outputDir", "outputs"))
@@ -644,6 +647,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             self.generate_image_prompt_part3,
         )
         for index in range(1, 4):
+            self.update_status(f"generating_image_{index}", 38 + (index - 1) * 10)
             image_path = self.data_path / f"{self.safe_name}_image_part{index}.png"
             prompt = prompt_builders[index - 1](content)
             prompt_path = self.data_path / f"{self.safe_name}_image_prompt_part{index}.txt"
@@ -678,6 +682,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                 image_path,
             )
 
+            self.update_status(f"generating_audio_{index}", 43 + (index - 1) * 10)
             extension_setting = get_job_setting(self.config, JOB_ID, "job_config", "audio_extension")
             if extension_setting is None:
                 ai_config = self.config.get("ai", {})
@@ -774,6 +779,12 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         if self.pipeline_run_id is not None:
             if self.run_id is None:
                 raise RuntimeError("Video Creator parent run was not validated.")
+            update_progress(self.database, self.schema, self.run_id, 1)
+            self.logger.info(
+                "Job progress run_id=%s pattern_id=%s status=starting progress=1%%.",
+                self.run_id,
+                self.pattern["pattern_id"],
+            )
             return
         self.run_log_dir.mkdir(parents=True, exist_ok=True)
         self.run_log_path = self.run_log_dir / (
@@ -797,7 +808,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             metadata={"schema": self.schema},
         )
         self.logger.info(
-            "Created run #%s for grammar pattern_id=%s (pid=%s).",
+            "Created run #%s for grammar pattern_id=%s (pid=%s); progress=1%%.",
             self.run_id,
             self.pattern["pattern_id"],
             os.getpid(),
@@ -884,9 +895,28 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         finally:
             db.close()
 
-    def update_status(self, status: str) -> None:
+    def update_status(self, status: str, progress_percent: int | None = None) -> None:
         if self.run_id is None:
             raise RuntimeError("Cannot update run status before creating run record.")
+        progress_by_status = {
+            "examples_generated": 25,
+            "script_generated": 35,
+            "assets_generated": 75,
+            "rendering_video": 80,
+            "video_generated": 100,
+            "content_generated": 100,
+        }
+        progress = progress_percent if progress_percent is not None else progress_by_status.get(status)
+        if progress is not None:
+            update_progress(self.database, self.schema, self.run_id, progress)
+            pattern_id = self.pattern["pattern_id"] if self.pattern else None
+            self.logger.info(
+                "Job progress run_id=%s pattern_id=%s status=%s progress=%s%%.",
+                self.run_id,
+                pattern_id,
+                status,
+                progress,
+            )
         self.logger.debug(
             "Updating run_id=%s status=%s.",
             self.run_id,
@@ -930,12 +960,15 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
         try:
             self.select_pattern(pattern_id, force=force)
             self.start_run()
+            self.update_status("generating_content", 5)
             content = self.generate_content()
             self.update_status("examples_generated")
+            self.update_status("writing_scripts", 30)
             scripts = self.write_scripts(content)
             self.update_status("script_generated")
             image_paths, audio_paths = self.generate_assets(content, scripts)
             self.update_status("assets_generated")
+            self.update_status("rendering_video")
             output = self.render_video(image_paths, audio_paths)
             if not output.is_file() or output.stat().st_size == 0:
                 raise RuntimeError("Generated video is missing or empty.")
@@ -1077,6 +1110,7 @@ def main() -> int:
             try:
                 job.select_pattern(args.pattern_id, force=args.force)
                 job.start_run()
+                job.update_status("generating_content", 5)
                 content = job.generate_content()
                 job.update_status("content_generated")
                 print(json.dumps({

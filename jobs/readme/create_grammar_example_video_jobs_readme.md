@@ -94,8 +94,9 @@ per-run log directory; otherwise job uses
 9. Concatenate clips and create ASS subtitle overlay. Text is white, bold,
    large, with thick dark-blue outline and shadow, centered near lower frame.
    Japanese-aware wrapping inserts visual line breaks only; job asserts that
-   removing those breaks restores exact original `example_jp`. Font size
-   reduces for longer, multi-line examples. Subtitle displays during clip 1
+   removing those breaks restores exact original `example_jp`. Font size is
+   72 px for up to two lines and 64 px for longer examples; side margins are
+   20 px. Subtitle displays during clip 1
    (0–10 seconds), when dialogue is requested.
 10. Pad synthesized speech with silence to 20 seconds and mux with concatenated
     video and burned subtitle. Subtitle text and timing remain unchanged.
@@ -119,6 +120,8 @@ not written as individual log lines. Stages include `analyzing_example`,
 `generating_example_audio`, `rendering_subtitle_audio`, `validating_output`,
 `video_generated`, and
 `failed`; current stage is stored in `{schema}.runs.metadata.job_stage`.
+The numeric `{schema}.runs.progress` field advances from 1 to 100 at major
+steps and is logged in each run's log file.
 
 ## Output
 

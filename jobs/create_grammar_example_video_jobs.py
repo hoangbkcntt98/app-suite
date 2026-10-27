@@ -30,8 +30,10 @@ if str(JOBS_ROOT) not in sys.path:
 from job_interface import (
     get_effective_job_config,
     get_job_setting,
+    ensure_progress_column,
     insert_run_record,
     runs_table,
+    update_progress,
     update_run_record,
 )
 from python.ai import VideoTaskFailed, call_api, text_to_audio, text_to_video
@@ -137,6 +139,7 @@ class GrammarExampleVideoJob:
         database_config["options"] = f"{options} -c search_path={self.schema},public".strip()
         self.config["database"] = database_config
         self.database = DatabasePool.create(self.config)
+        ensure_progress_column(self.database, self.schema)
         self.database.execute(
             f'ALTER TABLE "{self.schema}"."grammar_examples" '
             "ADD COLUMN IF NOT EXISTS video_path TEXT"
@@ -182,17 +185,7 @@ class GrammarExampleVideoJob:
             "examples.example_ja IS NOT NULL",
             "NULLIF(BTRIM(examples.example_ja), '') IS NOT NULL",
             "patterns.pattern IS NOT NULL",
-            f"""NOT EXISTS (
-                SELECT 1 FROM {self.runs_table} AS runs
-                WHERE runs.is_completed = FALSE
-                  AND (
-                    (runs.object_type = 'grammar_patterns'
-                     AND runs.object_id = patterns.id::text)
-                    OR
-                    (runs.object_type = 'grammar_examples'
-                     AND runs.metadata->>'pattern_id' = patterns.id::text)
-                  )
-            )""",
+            "examples.video_path IS NULL"
         ]
         params: list[Any] = []
         if pattern_id is not None:
@@ -266,7 +259,7 @@ class GrammarExampleVideoJob:
         )
         self.current_example_id = int(row["example_id"])
         self.logger.info(
-            "Started example video run_id=%s example_id=%s pattern_id=%s pattern=%s display_order=%s.",
+            "Started example video run_id=%s example_id=%s pattern_id=%s pattern=%s display_order=%s progress=1%%.",
             self.run_id,
             row["example_id"],
             row["pattern_id"],
@@ -278,6 +271,16 @@ class GrammarExampleVideoJob:
     def set_progress(self, status: str, **metadata: Any) -> None:
         if self.run_id is None:
             return
+        progress = metadata.get("progress_percent")
+        if progress is not None:
+            update_progress(self.database, self.schema, self.run_id, progress)
+            self.logger.info(
+                "Job progress run_id=%s example_id=%s status=%s progress=%s%%.",
+                self.run_id,
+                self.current_example_id,
+                status,
+                progress,
+            )
         terminal = status in {"video_generated", "failed"}
         update_run_record(
             self.database,
@@ -326,7 +329,7 @@ Constraints:
 - video_prompt_1 describes first 10 seconds: setup, action, and character speaking dialogue.
 - video_prompt_2 describes next 10 seconds as continuation, with same named characters,
   faces, clothes, location, props, time, light, camera, and art style; show consequence/payoff.
-- both prompts specify 2D anime, vertical 9:16, the example_jp will be show of the bottom path of video (blue backgroud), no generated logos.
+- both prompts specify 2D anime, vertical 9:16, no generated lettering/subtitles/logos.
 - video_prompt_2 must explicitly continue from the final frame of clip 1 and not reset scene.
 - the named speaker says dialogue naturally in Japanese in clip 1 or 2, from its opening, with visible
   mouth movement synchronized to speech; include no additional spoken line
@@ -486,11 +489,11 @@ Constraints:
             ], check=True)
 
             subtitle_path = temp / "captions.ass"
-            wrapped_subtitle = _wrap_japanese_subtitle(script["subtitle"])
+            wrapped_subtitle = _wrap_japanese_subtitle(script["subtitle"], max_columns=28)
             if wrapped_subtitle.replace(r"\N", "") != script["subtitle"]:
                 raise RuntimeError("Subtitle line wrapping changed example_jp text.")
             line_count = wrapped_subtitle.count(r"\N") + 1
-            font_size = 58 if line_count <= 2 else 48
+            font_size = 72 if line_count <= 2 else 64
             subtitle_path.write_text(
                 "[Script Info]\n"
                 "ScriptType: v4.00+\n"
@@ -504,7 +507,7 @@ Constraints:
                 "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
                 "Alignment, MarginL, MarginR, MarginV, Encoding\n"
                 f"Style: Example,Noto Sans CJK JP,{font_size},&H00FFFFFF,&H000000FF,"
-                "&H00301808,&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,50,50,270,1\n"
+                "&H00301808,&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,20,20,270,1\n"
                 "\n[Events]\n"
                 "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
                 f"Dialogue: 0,0:00:00.00,0:00:10.00,Example,,0,0,0,,{_ass_escape(wrapped_subtitle)}\n",

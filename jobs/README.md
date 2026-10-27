@@ -4,6 +4,24 @@ Detailed job behavior:
 
 - [Grammar lesson generator](create_grammar_video_jobs_readme.md)
 - [Grammar example video generator](create_grammar_example_video_jobs_readme.md)
+- [Manga crawler runner](manga_crawler_jobs_readme.md)
+
+## Manga crawler job
+
+`manga_crawler_jobs.py` runs crawler logic maintained in
+`jobs/manga_crawler.py`. Web routes use this job entrypoint; crawler execution
+does not depend on `/home/opc/manga-crawler/generic_manga_crawler.py`.
+
+```bash
+jobs/app-tools/.venv/bin/python -m pip install \
+  -r jobs/manga_crawler_requirements.txt
+jobs/app-tools/.venv/bin/python jobs/manga_crawler_jobs.py \
+  --site-key mangarw-base-harem-isekai-adventure-copy \
+  --chapter-id 3035582 \
+  --python-bin jobs/app-tools/.venv/bin/python
+```
+
+See `manga_crawler_jobs_readme.md` for options and environment mapping.
 
 ## Grammar video job
 
@@ -108,24 +126,55 @@ replace an existing output video. Configure AI chat/video/audio services under
 `ai` in app-tools config; job-specific overrides belong under
 `job_config.create_grammar_example_video_jobs`.
 
-## Grammar job watcher
+## WordCreator job
 
-Run the grammar job repeatedly with app-tools virtualenv Python. Watcher log,
-PID, interval, and lock files live beside configured `logger.file`; lock
-prevents overlapping runs.
+`modules/video-creator/scripts/create_word_creator_job.ts` runs the existing
+WordCreator worker logic as a command-line job. It reads matching Anki notes,
+generates four Japanese readings with the configured LLM, renders each quiz
+from the WordCreator HTML template, and saves quiz/video metadata to the
+Video Creator database.
+
+Run from the repository root:
+
+```bash
+npx tsx modules/video-creator/scripts/create_word_creator_job.ts \
+  --source 生 \
+  --source 行 \
+  --duration 10 \
+  --fps 25
+```
+
+The job loads repository `.env` files through Next's environment loader and
+uses existing `VIDEO_*` settings. It matches the WordCreator UI's force
+recreate behavior. Add `--fixed-fps` to disable automatic GIF FPS matching.
+The command waits for completion and exits nonzero if the batch fails or any
+Kanji item reports an error. Active batches use the existing WordCreator
+queue and worker lock.
+
+## Grammar job watchers
+
+Run either grammar video job repeatedly with app-tools virtualenv Python.
+Each watcher has its own log, PID, interval, and lock files beside configured
+`logger.file`; lock prevents overlapping runs.
 
 ```bash
 jobs/watcher.sh start create_grammar_video_jobs.py --interval 10 \
   --config jobs/app-tools/config.json
+jobs/watcher.sh start create_grammar_example_video_jobs.py --interval 10 \
+  --config jobs/app-tools/config.json --schema openclaw --limit 10
 jobs/watcher.sh status create_grammar_video_jobs.py \
   --config jobs/app-tools/config.json
 jobs/watcher.sh stop create_grammar_video_jobs.py \
   --config jobs/app-tools/config.json
+jobs/watcher.sh status create_grammar_example_video_jobs.py \
+  --config jobs/app-tools/config.json
+jobs/watcher.sh stop create_grammar_example_video_jobs.py \
+  --config jobs/app-tools/config.json
 ```
 
-Pass normal job options after watcher options, for example `--schema openclaw`.
-Watcher currently supports `create_grammar_video_jobs.py`; its output appends
-to `create_grammar_video_jobs_watcher.log`.
+Pass normal job options after watcher options, for example `--schema openclaw`
+or `--example-id 1801`. Each job writes to its own
+`{job_name}_watcher.log`.
 
 ## Optional social publishing
 

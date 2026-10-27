@@ -210,7 +210,7 @@ async function trackProcess(
   args: string[],
   afterSuccess?: (stdout: string, outputVideo?: string) => Promise<void>,
   cwd: string = appConfig.skillDir(),
-  envOverrides: NodeJS.ProcessEnv = {},
+  envOverrides: Partial<NodeJS.ProcessEnv> = {},
 ) {
   const safeArgs = args.map((arg, index) => args[index - 1] === "--page-token" ? "[REDACTED]" : (arg.includes(" ") ? JSON.stringify(arg) : arg));
   const header = `$ ${command} ${safeArgs.join(" ")}\n\n`;

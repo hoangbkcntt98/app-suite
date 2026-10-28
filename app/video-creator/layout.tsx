@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "@video/app/globals.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Video Creator",

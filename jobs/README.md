@@ -128,28 +128,33 @@ replace an existing output video. Configure AI chat/video/audio services under
 
 ## WordCreator job
 
-`modules/video-creator/scripts/create_word_creator_job.ts` runs the existing
-WordCreator worker logic as a command-line job. It reads matching Anki notes,
-generates four Japanese readings with the configured LLM, renders each quiz
-from the WordCreator HTML template, and saves quiz/video metadata to the
-Video Creator database.
+`jobs/create_word_creator_jobs.py` reads matching Anki notes, generates four
+Japanese readings with `ai.chat`, renders each quiz from the WordCreator HTML
+template, and saves quiz/video metadata to the Video Creator database. Configure
+the database, `ai.chat`, output paths, and optional Anki database in
+`jobs/app-tools/config.json`. Install Python dependencies from
+`jobs/app-tools/python/requirements.txt`.
+Set `job_config.create_word_creator_jobs.node_bin` and its
+`paths.wordCreatorOutputDir`, `paths.templatePath`, and `paths.rendererPath`
+values to select Node and WordCreator assets. `paths.audioPath` selects the WAV
+track mixed into each generated video.
 
 Run from the repository root:
 
 ```bash
-npx tsx modules/video-creator/scripts/create_word_creator_job.ts \
+jobs/app-tools/.venv/bin/python jobs/create_word_creator_jobs.py \
+  --config jobs/app-tools/config.json \
   --source 生 \
   --source 行 \
   --duration 10 \
   --fps 25
 ```
 
-The job loads repository `.env` files through Next's environment loader and
-uses existing `VIDEO_*` settings. It matches the WordCreator UI's force
-recreate behavior. Add `--fixed-fps` to disable automatic GIF FPS matching.
-The command waits for completion and exits nonzero if the batch fails or any
-Kanji item reports an error. Active batches use the existing WordCreator
-queue and worker lock.
+`DATABASE_URL` selects shared database/schema; `VIDEO_ANKI_DATABASE_URL` can
+override external Anki storage. `VIDEO_OUTPUT_DIR`, `VIDEO_DATA_DIR`, and
+`VIDEO_WORD_CREATOR_OUTPUT_DIR` can override output paths. Add
+`--fixed-fps` to disable automatic GIF FPS matching. The command exits nonzero
+if any item fails.
 
 ## Grammar job watchers
 

@@ -9,24 +9,23 @@ One Next.js app for Manga Web, LifeQuest, and Video Creator.
 - `/lifequest` opens LifeQuest.
 - `/video-creator` opens Video Creator.
 
-Each module keeps its own routes, auth session, and database. Shared route names
-such as `/api/auth/login` remain isolated under module prefixes.
+Each app keeps its own routes and auth session. Shared route names such as
+`/api/auth/login` remain isolated under app prefixes.
 
 ## Setup
 
 1. Copy `.env.example` to `.env.local`; fill database credentials and required secrets.
-2. Point module connections at `app_suite_db`; use `MANGA_DB_SCHEMA=manga_db`,
-   `LIFEQUEST_DATABASE_URL?schema=lifequest_db`, and
-   `VIDEO_DATABASE_SCHEMA=openclaw` to select each module's schema.
+2. Set one `DATABASE_URL` for PostgreSQL, including `?schema=app-suite`.
+   Manga Web, LifeQuest, and Video Creator use this shared connection/schema.
 3. Keep `LIFEQUEST_UPLOAD_ROOT` pointed at existing LifeQuest music uploads.
    Upload data stays outside this app.
 4. Install dependencies with `npm install`.
 5. Run `npm run db:generate`, `npm run lint`, and `npm run dev`.
 
-LifeQuest Prisma commands use `LIFEQUEST_DATABASE_URL`. Video Creator tables
-live in the `openclaw` schema; apply SQL migrations from
-`modules/video-creator/db` to `VIDEO_DATABASE_URL`. Manga Web uses
-`MANGA_DB_*`; Anki tables use the `anki` schema.
+LifeQuest Prisma commands use `DATABASE_URL`. Video Creator tables are managed
+by the Video Creator app and its jobs using the same connection. Manga Web
+crawler and app also use `DATABASE_URL`; Anki integrations may still use
+external Anki storage.
 
 ## WordCreator Japanese fonts
 

@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-_SCHEMA_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+_SCHEMA_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_$-]*$")
 
 
 def runs_table(schema: str) -> str:

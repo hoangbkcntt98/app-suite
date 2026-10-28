@@ -106,7 +106,7 @@ def _parse_publish_payload(value: Any, option: str) -> dict[str, Any] | None:
 class GrammarVideoJob:
     def __init__(self, config: dict[str, Any], schema: str | None = None):
         self.schema = schema or get_job_setting(config, JOB_ID, "database", "schema", "openclaw")
-        if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", self.schema):
+        if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$-]*", self.schema):
             raise ValueError(f"Invalid PostgreSQL schema name: {self.schema!r}")
         self.schema_prefix = f'"{self.schema}"'
         self.runs_table = runs_table(self.schema)
@@ -115,7 +115,7 @@ class GrammarVideoJob:
         database_config = self.config.get("database", {})
         database_config = dict(database_config) if isinstance(database_config, dict) else {}
         existing_options = str(database_config.get("options", "")).strip()
-        database_config["options"] = f"{existing_options} -c search_path={self.schema},public".strip()
+        database_config["options"] = f'{existing_options} -c search_path="{self.schema}",public'.strip()
         self.config["database"] = database_config
         self.logger = get_logger("grammar-video-job", self.config)
         self.logger.info("Opening PostgreSQL pool (schema=%s).", self.schema)

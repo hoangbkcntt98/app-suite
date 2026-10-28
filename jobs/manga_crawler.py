@@ -163,8 +163,17 @@ def get_conn():
         ))
     if psycopg2 is None:
         raise RuntimeError("PostgreSQL mode requires the psycopg2 package")
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if database_url:
+        parsed = urlparse(database_url)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        schema = query.pop("schema", [os.environ.get("MANGA_DB_SCHEMA", "public")])[0]
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_-]*", schema):
+            raise ValueError("DATABASE_URL schema is invalid")
+        clean_url = parsed._replace(query=urlencode(query, doseq=True)).geturl()
+        return psycopg2.connect(clean_url, options=f'-c search_path="{schema}"')
     schema = os.environ.get("MANGA_DB_SCHEMA", "public").strip() or "public"
-    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", schema):
+    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_-]*", schema):
         raise ValueError("MANGA_DB_SCHEMA must be a valid PostgreSQL schema name")
     return psycopg2.connect(
         host=os.environ["DB_HOST"],

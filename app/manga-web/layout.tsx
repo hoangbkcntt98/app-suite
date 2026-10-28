@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "@manga/app/globals.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Manga Web",

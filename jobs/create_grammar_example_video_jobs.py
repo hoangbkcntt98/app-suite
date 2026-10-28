@@ -129,14 +129,14 @@ class GrammarExampleVideoJob:
             config, JOB_ID, "database", "schema",
             get_job_setting(config, "create_grammar_video_jobs", "database", "schema", "openclaw"),
         )
-        if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", self.schema):
+        if not isinstance(self.schema, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$-]*", self.schema):
             raise ValueError(f"Invalid PostgreSQL schema name: {self.schema!r}")
         self.runs_table = runs_table(self.schema)
         self.config = get_effective_job_config(config, JOB_ID)
         database_config = self.config.get("database", {})
         database_config = dict(database_config) if isinstance(database_config, dict) else {}
         options = str(database_config.get("options", "")).strip()
-        database_config["options"] = f"{options} -c search_path={self.schema},public".strip()
+        database_config["options"] = f'{options} -c search_path="{self.schema}",public'.strip()
         self.config["database"] = database_config
         self.database = DatabasePool.create(self.config)
         ensure_progress_column(self.database, self.schema)

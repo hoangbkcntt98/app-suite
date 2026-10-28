@@ -27,13 +27,13 @@
         "./*"
       ],
       "@manga/*": [
-        "./modules/manga-web/src/*"
+        "./app/manga-web/*"
       ],
       "@lifequest/*": [
-        "./modules/lifequest/*"
+        "./app/lifequest/*"
       ],
       "@video/*": [
-        "./modules/video-creator/src/*"
+        "./app/video-creator/*"
       ]
     }
   },

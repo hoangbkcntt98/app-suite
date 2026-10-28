@@ -4,6 +4,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
+}, {
+  schema: new URL(process.env.DATABASE_URL!).searchParams.get("schema") || "public",
 });
 
 const prisma = new PrismaClient({

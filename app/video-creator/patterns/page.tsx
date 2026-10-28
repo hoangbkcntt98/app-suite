@@ -18,7 +18,7 @@ export default async function PatternsPage() {
   let patterns: Awaited<ReturnType<typeof getGrammarPatterns>> = [];
   let videos: VideoRecord[] = [];
   let error = "";
-  try { patterns = await getGrammarPatterns(); } catch { error = "Could not read grammar_patterns. Check PostgreSQL and VIDEO_DATABASE_URL."; }
+  try { patterns = await getGrammarPatterns(); } catch { error = "Could not read grammar_patterns. Check PostgreSQL and DATABASE_URL."; }
   try { videos = await listVideos({ limit: null, strict: true }); } catch { error ||= "Could not read videos. Check database and output directory."; }
 
   return (

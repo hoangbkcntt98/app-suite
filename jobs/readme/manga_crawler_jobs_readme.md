@@ -3,7 +3,7 @@
 ## Purpose
 
 Run repository-owned crawler logic from `jobs/manga_crawler.py`. Manga Web
-starts this job through `modules/manga-web/src/lib/crawler.ts`; it no longer
+starts this job through `app/manga-web/lib/crawler.ts`; it no longer
 launches a crawler implementation from `/home/opc/manga-crawler`.
 
 Install crawler dependencies into the Python environment selected by
@@ -34,8 +34,8 @@ Pass either `--site-key KEY` to load registered site settings from
 `--python-bin`, `--env-file`, and `--log-file` override the crawler Python
 runtime, optional dotenv file, and appended log path. Defaults use
 `MANGA_CRAWLER_PYTHON`, `MANGA_CRAWLER_ENV_FILE`, and `MANGA_CRAWLER_LOG`.
-Database settings map from `MANGA_DB_*` to the `DB_*` variables expected by
-the crawler.
+Crawler reads the shared PostgreSQL `DATABASE_URL`; its `schema` query
+parameter selects the target schema.
 
 ## Processing
 

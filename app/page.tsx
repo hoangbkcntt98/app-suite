@@ -24,13 +24,13 @@ const apps = [
   },
   {
     id: "03",
-    name: "Video Creator",
-    category: "SÁNG TẠO VIDEO",
-    description: "Lên lịch, dựng nội dung và quản lý video.",
-    href: "/video-creator",
-    tone: "video",
-    mark: "▶",
-    action: "Mở studio",
+    name: "Japanese Lab",
+    category: "HỌC TIẾNG NHẬT",
+    description: "Ngữ pháp N1, từ vựng, kanji và bài kiểm tra ngắn mỗi ngày.",
+    href: "/japanese",
+    tone: "japanese",
+    mark: "日",
+    action: "Bắt đầu học",
   },
 ];
 
@@ -72,7 +72,7 @@ export default function Home() {
               <p className="section-kicker">BẮT ĐẦU TỪ ĐÂY</p>
               <h2 id="apps-heading">Không gian của bạn</h2>
             </div>
-            <span>03 ỨNG DỤNG</span>
+            <span>04 ỨNG DỤNG</span>
           </div>
           <div className="app-grid">
             {apps.map((app) => (

@@ -31,9 +31,6 @@
       ],
       "@lifequest/*": [
         "./app/lifequest/*"
-      ],
-      "@video/*": [
-        "./app/video-creator/*"
       ]
     }
   },

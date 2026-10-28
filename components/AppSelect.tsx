@@ -1,11 +1,10 @@
 "use client";
 
-type AppId = "manga-web" | "lifequest" | "video-creator";
+type AppId = "manga-web" | "lifequest";
 
 const apps: { id: AppId; name: string; href: string }[] = [
   { id: "manga-web", name: "Manga Web", href: "/manga-web" },
   { id: "lifequest", name: "LifeQuest", href: "/lifequest" },
-  { id: "video-creator", name: "Video Creator", href: "/video-creator" },
 ];
 
 export default function AppSelect({ current }: { current: AppId }) {

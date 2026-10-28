@@ -1,0 +1,115 @@
+.page {
+  --ink: #25352c;
+  --muted: #718078;
+  --green: #58b957;
+  --green-dark: #378d43;
+  --line: #e4ece2;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 18px 24px 48px;
+  background:
+    radial-gradient(ellipse at 88% 5%, #e7f8d8 0, transparent 24rem),
+    #f7fbf5;
+  color: var(--ink);
+  font-family: "DM Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+
+.page * { box-sizing: border-box; }
+.page a { text-decoration: none; }
+.header, .sectionTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.header { width: min(100%, 1040px); margin: 0 auto; min-height: 42px; }
+.headerActions { display: flex; align-items: center; gap: 10px; }
+.back { color: #67796c; font-size: 13px; font-weight: 700; }
+.today { padding: 7px 10px; border: 1px solid #dcebd8; border-radius: 9px; background: #fff; color: #718078; font-size: 11px; font-weight: 800; }
+.gameLink {
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--green);
+  box-shadow: 0 3px 0 #398f43;
+  color: white;
+  font-size: 13px;
+  font-weight: 800;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.gameLink:hover { transform: translateY(2px); box-shadow: 0 1px 0 #398f43; }
+.badge { color: #718078; font-size: 10px; font-weight: 800; letter-spacing: .09em; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  padding: 11px 16px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 3px 10px #25352c08;
+}
+.stats article { display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 5px 10px; border-right: 1px solid var(--line); }
+.stats article:last-child { border: 0; }
+.stats strong { color: #43994a; font-size: 21px; font-weight: 900; }
+.stats span { color: #829087; font-size: 9px; font-weight: 900; letter-spacing: .07em; }
+
+.grid { display: grid; grid-template-columns: 1.12fr .88fr; gap: 14px; width: min(100%, 1040px); margin: 14px auto 0; }
+.grammarCard, .quizCard, .vocabCard, .kanjiCard { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 19px; background: #fff; box-shadow: 0 4px 14px #25352c08; }
+.sectionTop { color: #7a8980; font-size: 9px; font-weight: 900; letter-spacing: .09em; }
+.sectionTop b { padding: 5px 9px; border-radius: 8px; background: #fff0bd; color: #9b731a; font-size: 10px; }
+.grammarCard h2, .quizCard h2 { margin: 18px 0 4px; color: #2c4835; font-size: clamp(28px, 4vw, 38px); font-weight: 900; letter-spacing: -.045em; }
+.meaning { margin: 0; color: #43574a; font-size: 15px; font-weight: 700; line-height: 1.5; }
+.note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.tags span { padding: 5px 8px; border: 1px solid #e2eddc; border-radius: 7px; background: #f5fbf2; color: #66806b; font-size: 10px; font-weight: 700; }
+.examples { display: grid; gap: 8px; margin-top: 14px; }
+.examples div { padding: 9px 11px; border-radius: 10px; background: #f7faf6; }
+.examples strong, .examples small { display: block; }
+.examples strong { font-size: 13px; }
+.examples small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+.quizCard { border-color: #d7ebd2; background: linear-gradient(150deg, #f2fbe9, #fff 65%); }
+.quizCard .sectionTop { color: #64886b; }
+.quizPrompt { margin: 18px 0 0; color: #75877a; font-size: 12px; font-weight: 700; }
+.quizCard h2 { margin-top: 6px; font-size: 32px; }
+.options { display: grid; gap: 7px; margin-top: 14px; }
+.options button { padding: 10px 12px; border: 1px solid #dfe9dc; border-radius: 10px; background: #fff; color: #43574a; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; text-align: left; transition: border-color .15s, background .15s; }
+.options button:hover:not(:disabled) { border-color: #7bc675; background: #f5fff1; }
+.options button:focus-visible, .gameLink:focus-visible, .back:focus-visible { outline: 3px solid #82cb74; outline-offset: 3px; }
+.options button:disabled { cursor: default; }
+.options .correct { border-color: #65b95e; background: #ddf5d8; color: #347f39; }
+.options .wrong { border-color: #e8a59a; background: #fff0ec; color: #a14c40; }
+.answer { margin: 12px 0 0; color: #398d43; font-size: 12px; font-weight: 800; }
+
+.vocabCard { grid-column: 1; }
+.sectionTop a { color: #419748; font-size: 11px; font-weight: 800; letter-spacing: 0; }
+.wordList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin-top: 10px; }
+.wordList > div { min-width: 0; padding: 9px 0; border-top: 1px solid #edf1eb; }
+.wordList b { font-size: 16px; }
+.wordList span { margin-left: 8px; color: #87948a; font-size: 11px; }
+.wordList p { margin: 3px 0; color: #586a5e; font-size: 11px; }
+.wordList small { display: block; overflow: hidden; color: #94a096; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.kanjiCard { grid-column: 2; background: #fffdf4; }
+.kanjiList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.kanjiList div { min-width: 0; padding: 11px 8px; border: 1px solid #f1ebd6; border-radius: 12px; background: #fff; text-align: center; }
+.kanjiList strong { color: #d49a34; font-size: 34px; font-weight: 800; }
+.kanjiList p { min-height: 28px; margin: 3px 0; color: #57675b; font-size: 11px; }
+.kanjiList small { display: block; overflow: hidden; color: #92988e; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.error { width: min(100%, 1040px); margin: 24px auto; padding: 20px; border-radius: 14px; background: #fff0ec; color: #a14c40; }
+
+@media (max-width: 700px) {
+  .page { padding: 12px 14px 30px; }
+  .header { min-height: 38px; }
+  .headerActions { gap: 7px; }
+  .badge { display: none; }
+  .stats { grid-template-columns: repeat(2, 1fr); padding: 7px; }
+  .stats article { justify-content: flex-start; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  .stats article:nth-child(2) { border-right: 0; }
+  .stats article:nth-child(n+3) { border-bottom: 0; }
+  .stats span { font-size: 8px; }
+  .grid { grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+  .grammarCard, .quizCard, .vocabCard, .kanjiCard { grid-column: auto; padding: 16px; }
+  .wordList { grid-template-columns: 1fr 1fr; gap: 0 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gameLink, .options button { transition: none; }
+}

@@ -218,10 +218,10 @@ class GrammarExampleVideoJob:
         )
 
     def update_example_video_path(self, example_id: int, video_path: Path) -> None:
-        self.database.update(
-            f"{self.schema}.grammar_examples",
-            {"video_path": str(video_path)},
-            where={"id": example_id},
+        self.database.execute(
+            f'UPDATE "{self.schema}"."grammar_examples" '
+            "SET video_path = %s WHERE id = %s",
+            (str(video_path), example_id),
         )
         self.logger.info(
             "Updated grammar_examples.video_path example_id=%s path=%s.",

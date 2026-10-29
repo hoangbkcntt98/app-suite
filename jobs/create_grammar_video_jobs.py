@@ -661,11 +661,14 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
             self.logger.info("Generating image asset %s/3 with model=%s.", index, image_model)
             started_at = perf_counter()
             try:
-                image_bytes = text_to_image(prompt, config=self.config)
+                image_bytes = text_to_image(
+                    prompt,
+                    output=image_path,
+                    config=self.config,
+                )
             except Exception:
                 self.logger.exception("Image generation failed for asset %s/3.", index)
                 raise
-            image_path.write_bytes(image_bytes)
             image_paths.append(image_path)
             self.update_pattern_artifacts(
                 image_path=[str(path) for path in image_paths],

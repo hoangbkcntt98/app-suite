@@ -15,7 +15,7 @@ Each app keeps its own routes and auth session. Shared route names such as
 ## Setup
 
 1. Copy `.env.example` to `.env.local`; fill database credentials and required secrets.
-2. Set one `DATABASE_URL` for PostgreSQL, including `?schema=app-suite`.
+2. Set one `DATABASE_URL` for PostgreSQL, including `?schema=app_suite`.
    Manga Web, LifeQuest, and Video Creator use this shared connection/schema.
 3. Keep `LIFEQUEST_UPLOAD_ROOT` pointed at existing LifeQuest music uploads.
    Upload data stays outside this app.

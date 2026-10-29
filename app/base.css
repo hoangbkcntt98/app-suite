@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tinos";
+  src: url("/fonts/Tinos-Bold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+body,
+body * {
+  font-family: "Times New Roman", "Tinos", Times, serif !important;
+}
+
 .workspace-app-select {
   display: inline-flex;
   align-items: center;

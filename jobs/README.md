@@ -162,7 +162,29 @@ Run either grammar video job repeatedly with app-tools virtualenv Python.
 Each watcher has its own log, PID, interval, and lock files beside configured
 `logger.file`; lock prevents overlapping runs.
 
+Define multiple watchers in `jobs/app-tools/config.json`, using `file` for
+Python filename and `args` for job-specific arguments. Each watcher can
+override `config` and set optional `interval` (seconds) or `one_time` (default
+false). Watcher adds `--config <path>` automatically. See `watchers` in
+`jobs/app-tools/config.example.json`.
+
 ```bash
+jobs/watcher.sh start --config jobs/app-tools/config.json
+jobs/watcher.sh status --config jobs/app-tools/config.json
+jobs/watcher.sh status --all
+jobs/watcher.sh stop --all
+```
+
+For `start` and `status`, `--config` names JSON containing `watchers` and is
+also passed to each Python job. `python_config` can select a different job
+config; each watcher can override it with `config`. `status --config` shows
+every watcher in that JSON; `status --all` shows all watcher PID files found
+in the repo. `stop --all` stops all active watchers, including watchers
+launched individually.
+
+```bash
+jobs/watcher.sh start create_grammar_example_video_jobs.py --one-time \
+  --config jobs/app-tools/config.json --example-id 1801
 jobs/watcher.sh start create_grammar_video_jobs.py --interval 10 \
   --config jobs/app-tools/config.json
 jobs/watcher.sh start create_grammar_example_video_jobs.py --interval 10 \
@@ -178,8 +200,33 @@ jobs/watcher.sh stop create_grammar_example_video_jobs.py \
 ```
 
 Pass normal job options after watcher options, for example `--schema openclaw`
-or `--example-id 1801`. Each job writes to its own
+or `--example-id 1801`. Add `--one-time` to invoke the Python job once and exit
+without waiting for another interval. Each job writes to its own
 `{job_name}_watcher.log`.
+
+## Japanese Lab game resources
+
+`generate_game_resource.py` creates `{schema}.game_resources` and generates
+Kanji Rush answer sets for `anki_kanji.RequiredVocabulary`. Correct readings
+come from the matching `anki_word.Reading`, then exact kanji vocabulary
+annotations as fallback. Kanji Rush `resource_id` stores matching
+`anki_kanji.anki_note_id`; existing rows keyed by `anki_kanji.id` are migrated
+without replacing their generated data. AI generates only the three incorrect
+readings.
+
+```bash
+jobs/app-tools/.venv/bin/python jobs/generate_game_resource.py \
+  --config jobs/app-tools/config.json --setup-only
+jobs/watcher.sh start generate_game_resource.py --one-time \
+  --config jobs/app-tools/config.json --limit 10
+jobs/watcher.sh start generate_game_resource.py --interval 300 \
+  --config jobs/app-tools/config.json
+```
+
+The table supports `word_blitz`, `kanji_rush`, and `grammar_sprint`; Kanji Rush
+resources use `resource_table = 'anki_kanji'`. Configure distractor generation
+through `ai.chat` in app-tools config. Rows with missing or stale
+`resource_data` are retried on later runs.
 
 ## Optional social publishing
 

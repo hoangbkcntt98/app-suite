@@ -1,0 +1,18 @@
+{
+  "python_config": "jobs/app-tools/config.json",
+  "watchers": [
+    {
+      "file": "create_grammar_video_jobs.py",
+      "interval": 300,
+      "args": []
+    },
+    {
+      "file": "generate_game_resource.py",
+      "interval": 600,
+      "args": [
+        "--limit",
+        "10"
+      ]
+    }
+  ]
+}

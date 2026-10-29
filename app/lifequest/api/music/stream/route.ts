@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 const UPLOAD_ROOT = process.env.LIFEQUEST_UPLOAD_ROOT || "/home/opc/lifequest/public/uploads/music";
 
 function getUserMusicDir(userId: string) {
-  return path.join(UPLOAD_ROOT, userId);
+  return path.join(/*turbopackIgnore: true*/ UPLOAD_ROOT, userId);
 }
 
 function getSafeTrackId(trackId: string | null) {
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     }
 
     const filePath = path.join(
-      getUserMusicDir(trackRef.ownerId),
+      /*turbopackIgnore: true*/ getUserMusicDir(trackRef.ownerId),
       trackRef.fileName
     );
     const fileInfo = await stat(filePath);
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     const contentType = getContentType(trackRef.fileName);
 
     if (!range) {
-      const stream = createReadStream(filePath);
+      const stream = createReadStream(/*turbopackIgnore: true*/ filePath);
 
       return new Response(nodeStreamToWeb(stream), {
         status: 200,
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const stream = createReadStream(filePath, { start, end });
+    const stream = createReadStream(/*turbopackIgnore: true*/ filePath, { start, end });
 
     return new Response(nodeStreamToWeb(stream), {
       status: 206,

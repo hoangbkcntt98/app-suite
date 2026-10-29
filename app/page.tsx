@@ -32,6 +32,16 @@ const apps = [
     mark: "日",
     action: "Bắt đầu học",
   },
+  {
+    id: "04",
+    name: "BatchJobManagement",
+    category: "TỰ ĐỘNG HÓA",
+    description: "Lên lịch chạy Python, theo dõi trạng thái và tiến độ từng run.",
+    href: "/batch-job-management",
+    tone: "batch",
+    mark: "RUN",
+    action: "Quản lý batch jobs",
+  },
 ];
 
 export default function Home() {
@@ -72,7 +82,7 @@ export default function Home() {
               <p className="section-kicker">BẮT ĐẦU TỪ ĐÂY</p>
               <h2 id="apps-heading">Không gian của bạn</h2>
             </div>
-            <span>04 ỨNG DỤNG</span>
+            <span>{String(apps.length).padStart(2, "0")} ỨNG DỤNG</span>
           </div>
           <div className="app-grid">
             {apps.map((app) => (

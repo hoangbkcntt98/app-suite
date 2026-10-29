@@ -437,6 +437,7 @@ Constraints:
                     output=output,
                     config=self._video_config(),
                     progress_callback=progress,
+                    logger=self.logger,
                 )
                 break
             except VideoTaskFailed:

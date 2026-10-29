@@ -6,7 +6,10 @@ const sampleConfigPath =
 
 export async function GET() {
   try {
-    const content = await readFile(sampleConfigPath, "utf8");
+    const content = await readFile(
+      /*turbopackIgnore: true*/ sampleConfigPath,
+      "utf8"
+    );
     const config = JSON.parse(content);
     return Response.json({ ok: true, config });
   } catch (error) {

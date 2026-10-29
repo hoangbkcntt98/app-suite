@@ -665,6 +665,7 @@ Visual flow: Elements arranged vertically with generous spacing and clear downwa
                     prompt,
                     output=image_path,
                     config=self.config,
+                    logger=self.logger,
                 )
             except Exception:
                 self.logger.exception("Image generation failed for asset %s/3.", index)

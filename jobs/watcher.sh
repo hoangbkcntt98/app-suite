@@ -31,6 +31,7 @@ usage() {
   cat <<'EOF'
 Usage:
   jobs/watcher.sh start --config WATCHERS.json
+  jobs/watcher.sh start JOB.py --clear-log
   jobs/watcher.sh status --all
   jobs/watcher.sh start JOB.py [--one-time] [--interval SECONDS] [job options...]
   jobs/watcher.sh stop --all
@@ -39,6 +40,7 @@ Usage:
 
 Example:
   jobs/watcher.sh start --config jobs/watchers.json
+  jobs/watcher.sh start create_grammar_example_video_jobs.py --clear-log --config jobs/app-tools/config.json
   jobs/watcher.sh status --all
   jobs/watcher.sh stop --all
   jobs/watcher.sh start create_grammar_video_jobs.py --interval 10 --config jobs/app-tools/config.json
@@ -136,6 +138,24 @@ esac
 if [[ "$ACTION" == "start" || "$ACTION" == "status" ]] &&
   [[ "${1:-}" == "--config" && $# -ge 2 ]]; then
   WATCHERS_CONFIG="$2"
+  shift 2
+  CLEAR_LOG=false
+  while (($#)); do
+    case "$1" in
+      --clear-log)
+        CLEAR_LOG=true
+        shift
+        ;;
+      *)
+        echo "Unsupported option with watcher config: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+  if [[ "$CLEAR_LOG" == "true" && "$ACTION" != "start" ]]; then
+    echo "--clear-log is only valid for start." >&2
+    exit 2
+  fi
   if [[ "$WATCHERS_CONFIG" != /* ]]; then
     WATCHERS_CONFIG="$ROOT_DIR/$WATCHERS_CONFIG"
   fi
@@ -220,8 +240,14 @@ PY
       "$ROOT_DIR/jobs/watcher.sh" status "$script" --config "$job_config"
     else
       start_args=(start "$script" --interval "$interval" --config "$job_config" "${args[@]}")
+      if [[ "$CLEAR_LOG" == "true" ]]; then
+        start_args+=(--clear-log)
+      fi
       if [[ "$one_time" == "true" ]]; then
         start_args=(start "$script" --one-time --interval "$interval" --config "$job_config" "${args[@]}")
+        if [[ "$CLEAR_LOG" == "true" ]]; then
+          start_args+=(--clear-log)
+        fi
       fi
       "$ROOT_DIR/jobs/watcher.sh" "${start_args[@]}"
     fi
@@ -283,6 +309,7 @@ configure_job "$JOB_NAME"
 INTERVAL=300
 CONFIG_PATH="$DEFAULT_CONFIG"
 ONE_TIME=false
+CLEAR_LOG=false
 JOB_ARGS=()
 while (($#)); do
   case "$1" in
@@ -292,6 +319,14 @@ while (($#)); do
         exit 2
       fi
       ONE_TIME=true
+      shift
+      ;;
+    --clear-log)
+      if [[ "$ACTION" != "start" ]]; then
+        echo "--clear-log is only valid for start." >&2
+        exit 2
+      fi
+      CLEAR_LOG=true
       shift
       ;;
     --interval)
@@ -426,6 +461,9 @@ case "$ACTION" in
       exit 0
     fi
     rm -f -- "$PID_FILE"
+    if [[ "$CLEAR_LOG" == "true" ]]; then
+      : >"$LOG_FILE"
+    fi
     if [[ "$ONE_TIME" == "true" ]]; then
       printf 'one-time\n' >"$INTERVAL_FILE"
     else

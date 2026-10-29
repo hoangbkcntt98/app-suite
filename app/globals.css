@@ -181,6 +181,7 @@
 }
 .hub-shell .quest .card-mark { background: #efe3d2; color: #92734f; }
 .hub-shell .video .card-mark { background: #dce8df; color: #53735c; font-size: 13px; }
+.hub-shell .batch .card-mark { background: #dce6ad; color: #53613b; font: 700 9px "DM Mono", monospace; }
 .hub-shell .card-copy { margin-top: auto; padding-top: 14px; }
 .hub-shell .card-copy h3 {
   margin: 0 0 5px;

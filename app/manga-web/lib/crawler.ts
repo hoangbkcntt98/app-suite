@@ -4,7 +4,10 @@ import { pool } from "@manga/lib/db";
 
 const crawlerJob =
   process.env.MANGA_CRAWLER_JOB || "jobs/manga_crawler_jobs.py";
-const crawlerJobPath = resolve(process.cwd(), crawlerJob);
+const crawlerJobPath = resolve(
+  /*turbopackIgnore: true*/ process.cwd(),
+  crawlerJob
+);
 const crawlerJobPython =
   process.env.MANGA_CRAWLER_JOB_PYTHON || "python3";
 const crawlerPython = process.env.MANGA_CRAWLER_PYTHON || "python3";
@@ -26,7 +29,7 @@ export function spawnCrawler(args: string[]) {
     DB_PASSWORD: process.env.DB_PASSWORD || process.env.MANGA_DB_PASSWORD,
   };
   const child = spawn(
-    crawlerJobPython,
+    /*turbopackIgnore: true*/ crawlerJobPython,
     [crawlerJobPath, ...args, "--log-file", crawlerLog, "--python-bin", crawlerPython],
     {
       cwd: process.cwd(),

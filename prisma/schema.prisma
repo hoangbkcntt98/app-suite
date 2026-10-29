@@ -357,6 +357,43 @@ model TuTienScene {
   @@map("tu_tien_scenes")
 }
 
+model BatchJob {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String
+  scriptPath     String        @map("script_path")
+  configPath     String        @map("config_path")
+  args           Json          @default("[]")
+  intervalSeconds Int          @map("interval_seconds")
+  enabled        Boolean       @default(true)
+  nextRunAt      DateTime      @map("next_run_at") @db.Timestamptz
+  lastRunAt      DateTime?     @map("last_run_at") @db.Timestamptz
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  runs           BatchJobRun[]
+
+  @@index([enabled, nextRunAt])
+  @@map("batch_jobs")
+}
+
+model BatchJobRun {
+  id          String    @id @default(uuid()) @db.Uuid
+  jobId       String    @map("job_id") @db.Uuid
+  status      String    @default("running")
+  progress    Int       @default(0)
+  stage       String?
+  pid         Int?
+  logPath     String?   @map("log_path")
+  error       String?
+  heartbeatAt DateTime  @default(now()) @map("heartbeat_at") @db.Timestamptz
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  job         BatchJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([status, heartbeatAt])
+  @@index([jobId, startedAt])
+  @@map("batch_job_runs")
+}
+
 model PushSubscription {
   id        String   @id @default(cuid())
   userId    String

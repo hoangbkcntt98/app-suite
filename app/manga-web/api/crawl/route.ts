@@ -7,7 +7,7 @@ export async function GET() {
   const logPath = process.env.MANGA_CRAWLER_LOG || "/home/opc/manga-crawler/crawler.log";
 
   try {
-    const content = await readFile(logPath, "utf8");
+    const content = await readFile(/*turbopackIgnore: true*/ logPath, "utf8");
     const lines = content.split("\n").slice(-80).join("\n");
 
     return Response.json({

@@ -8,8 +8,9 @@ One Next.js app for Manga Web, LifeQuest, and Video Creator.
 - `/manga-web` opens Manga Web.
 - `/lifequest` opens LifeQuest.
 - `/video-creator` opens Video Creator.
+- `/batch-job-management` opens Batch Job Management.
 
-Each app keeps its own routes and auth session. Shared route names such as
+Each app keeps its own routes and auth. Shared route names such as
 `/api/auth/login` remain isolated under app prefixes.
 
 ## Setup
@@ -20,7 +21,8 @@ Each app keeps its own routes and auth session. Shared route names such as
 3. Keep `LIFEQUEST_UPLOAD_ROOT` pointed at existing LifeQuest music uploads.
    Upload data stays outside this app.
 4. Install dependencies with `npm install`.
-5. Run `npm run db:generate`, `npm run lint`, and `npm run dev`.
+5. Run `npm run db:generate`, `npm run db:migrate`, `npm run lint`, and
+   `npm run dev`.
 
 LifeQuest Prisma commands use `DATABASE_URL`. Video Creator tables are managed
 by the Video Creator app and its jobs using the same connection. Manga Web
@@ -66,6 +68,7 @@ existing independent login flows.
    cd /home/opc/app-suite
    npm ci
    npm run db:generate
+   npm run db:migrate
    npm run build
    ```
 
@@ -76,7 +79,17 @@ existing independent login flows.
    pm2 save
    ```
 
-4. For later deployments, rebuild and restart:
+4. Start the persistent schedule worker:
+
+   ```bash
+   pm2 start jobs/batch_job_scheduler.py \
+     --name batch-job-scheduler \
+     --interpreter /home/opc/app-suite/jobs/app-tools/.venv/bin/python \
+     --cwd /home/opc/app-suite
+   pm2 save
+   ```
+
+5. For later deployments, rebuild and restart:
 
    ```bash
    cd /home/opc/app-suite
@@ -87,10 +100,27 @@ existing independent login flows.
    pm2 save
    ```
 
-5. Check status and logs with `pm2 status` and `pm2 logs app-suite`.
+6. Check status and logs with `pm2 status`, `pm2 logs app-suite`, and
+   `pm2 logs batch-job-scheduler`.
 
 Nginx must proxy `/`, `/_next/`, `/manga-web/`, `/lifequest/`, and
 `/video-creator/` to `http://127.0.0.1:3000`. Keep each app's existing upload,
-database, and other data directories outside this repository. Run
-`npm run db:migrate` only when intentionally applying pending LifeQuest Prisma
-migrations; Video Creator SQL migrations remain separate.
+database, and other data directories outside this repository. `npm run db:migrate`
+creates Batch Job Management tables in the configured schema and table names.
+Video Creator SQL migrations remain separate.
+# Batch Job Management
+
+Set `BATCH_JOB_MANAGEMENT_TOKEN` and `BATCH_JOB_DEFAULT_CONFIG` in `.env`.
+Default config path is `jobs/app-tools/config.json`. Set `BATCH_JOB_DB_SCHEMA`
+to override the schema from `DATABASE_URL?schema=...`; set `BATCH_JOB_TABLE`
+and `BATCH_JOB_RUNS_TABLE` to customize table names. Defaults are
+`batch_management_jobs` and `batch_management_runs` to avoid colliding with
+other apps' existing `batch_jobs` table. Run `npm run db:migrate`, then start the persistent
+scheduler worker with PM2 as shown above.
+
+Open `/batch-job-management` to create interval schedules. Select a Python file
+inside `jobs/`, config file inside the repository, interval in seconds, and
+arguments (one argument per line). The runner invokes the configured Python
+executable directly, adds `--config <path>`, saves schedules and run progress in
+PostgreSQL, and writes each run's output under `BATCH_JOB_LOG_DIR`.
+

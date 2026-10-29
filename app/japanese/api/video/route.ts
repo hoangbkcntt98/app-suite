@@ -2,12 +2,16 @@ import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const allowedRoots = [
-  path.resolve(process.cwd()),
+  path.resolve(/*turbopackIgnore: true*/ process.cwd()),
   "/var/web-data",
 ];
 
 function resolveVideoPath(input: string) {
-  const candidate = path.resolve(input.startsWith("/") ? input : path.join(process.cwd(), input));
+  const candidate = path.resolve(
+    /*turbopackIgnore: true*/ input.startsWith("/")
+      ? input
+      : path.join(/*turbopackIgnore: true*/ process.cwd(), input)
+  );
   return allowedRoots.some((root) => candidate === root || candidate.startsWith(`${root}${path.sep}`))
     ? candidate
     : null;

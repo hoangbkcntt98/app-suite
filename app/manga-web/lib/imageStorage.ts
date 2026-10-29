@@ -2,11 +2,12 @@ import { mkdir, rm } from "fs/promises";
 import { dirname, resolve, sep } from "path";
 
 export const imageStorageRoot = resolve(
+  /*turbopackIgnore: true*/
   process.env.MANGA_IMAGE_STORAGE || "/home/opc/manga-storage"
 );
 
 export function resolveImageStorageRoot(path?: string | null) {
-  return resolve(path?.trim() || imageStorageRoot);
+  return resolve(/*turbopackIgnore: true*/ path?.trim() || imageStorageRoot);
 }
 
 function isInsideStorage(path: string, roots: string[]) {

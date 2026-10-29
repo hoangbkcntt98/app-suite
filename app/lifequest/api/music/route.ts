@@ -92,7 +92,7 @@ function sanitizeFileName(name: string) {
 }
 
 function getUserMusicDir(userId: string) {
-  return path.join(UPLOAD_ROOT, userId);
+  return path.join(/*turbopackIgnore: true*/ UPLOAD_ROOT, userId);
 }
 
 function getTrackId(userId: string, fileName: string) {
@@ -158,7 +158,7 @@ function isAllowedAudioFile(mimeType: string, fileName: string) {
 
 async function listTracks(currentUserId: string): Promise<MusicTrack[]> {
   try {
-    const ownerDirs = (await readdir(UPLOAD_ROOT, { withFileTypes: true }))
+    const ownerDirs = (await readdir(/*turbopackIgnore: true*/ UPLOAD_ROOT, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
     const users = await prisma.user.findMany({
@@ -176,13 +176,13 @@ async function listTracks(currentUserId: string): Promise<MusicTrack[]> {
     const tracksByOwner = await Promise.all(
       ownerDirs.map(async (ownerId) => {
         const userDir = getUserMusicDir(ownerId);
-        const entries = await readdir(userDir, { withFileTypes: true });
+        const entries = await readdir(/*turbopackIgnore: true*/ userDir, { withFileTypes: true });
 
         return Promise.all(
           entries
             .filter((entry) => entry.isFile())
             .map(async (entry) => {
-              const filePath = path.join(userDir, entry.name);
+              const filePath = path.join(/*turbopackIgnore: true*/ userDir, entry.name);
               const info = await stat(filePath);
               const id = getTrackId(ownerId, entry.name);
               const uploader = userById.get(ownerId);
@@ -272,7 +272,7 @@ export async function PATCH(request: NextRequest) {
     const nextFileName = sanitizeRename(nextName, trackRef.fileName);
 
     if (nextFileName !== trackRef.fileName) {
-      const nextFilePath = path.join(userDir, nextFileName);
+      const nextFilePath = path.join(/*turbopackIgnore: true*/ userDir, nextFileName);
       const targetExists = await stat(nextFilePath)
         .then(() => true)
         .catch((error) => {
@@ -291,7 +291,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       await rename(
-        path.join(userDir, trackRef.fileName),
+        path.join(/*turbopackIgnore: true*/ userDir, trackRef.fileName),
         nextFilePath
       );
     }
@@ -377,7 +377,7 @@ async function parseStreamingUpload(
       }
 
       savedFileName = sanitizeFileName(originalFileName);
-      savedFilePath = path.join(userDir, savedFileName);
+      savedFilePath = path.join(/*turbopackIgnore: true*/ userDir, savedFileName);
 
       file.on("limit", () => {
         fail(new Error("Audio file must be 350MB or smaller."));
@@ -530,7 +530,12 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await unlink(path.join(getUserMusicDir(trackRef.ownerId), trackRef.fileName));
+    await unlink(
+      path.join(
+        /*turbopackIgnore: true*/ getUserMusicDir(trackRef.ownerId),
+        trackRef.fileName
+      )
+    );
 
     const tracks = await listTracks(authUser.userId);
 

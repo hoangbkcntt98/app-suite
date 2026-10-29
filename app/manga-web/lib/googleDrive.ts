@@ -27,7 +27,7 @@ function readOAuthConfig() {
   let value = configured;
   const possiblePath = path.isAbsolute(configured)
     ? configured
-    : path.resolve(process.cwd(), configured);
+    : path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
   try {
     value = readFileSync(possiblePath, "utf8");
   } catch {
@@ -84,7 +84,7 @@ function getGoogleAuth() {
   if (!credentialsJson && configuredPath) {
     const credentialPath = path.isAbsolute(configuredPath)
       ? configuredPath
-      : path.resolve(process.cwd(), configuredPath);
+      : path.resolve(/*turbopackIgnore: true*/ process.cwd(), configuredPath);
     try {
       credentialsJson = readFileSync(credentialPath, "utf8");
     } catch (error) {

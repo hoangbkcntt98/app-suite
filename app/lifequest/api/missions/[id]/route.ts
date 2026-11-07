@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MissionDifficulty, MissionRepeatType, Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
-import { getMissionRewardByDifficulty } from "@lifequest/lib/mission-rewards";
+import { getMissionRewardByDifficulty, type MissionDifficulty } from "@lifequest/lib/mission-rewards";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 
+type MissionRepeatType = "DAILY" | "WEEKLY" | "ONCE";
+const difficulties = ["EASY", "NORMAL", "HARD", "EPIC"] as const;
+const repeatTypes = ["DAILY", "WEEKLY", "ONCE"] as const;
 const updateMissionSchema = z.object({
   attributeId: z.string().min(1).optional(),
   title: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
-  difficulty: z.nativeEnum(MissionDifficulty).optional(),
-  repeatType: z.nativeEnum(MissionRepeatType).optional(),
+  difficulty: z.enum(difficulties).optional(),
+  repeatType: z.enum(repeatTypes).optional(),
   startDate: z.string().datetime().optional().nullable(),
   endDate: z.string().datetime().optional().nullable(),
   goldReward: z.coerce.number().int().min(0).optional().nullable(),
@@ -47,21 +50,20 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const mission = await prisma.mission.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-      },
-      include: {
-        attribute: true,
-        logs: {
-          orderBy: {
-            completedDate: "desc",
-          },
-          take: 30,
-        },
-      },
-    });
+    const result = await query(
+      `SELECT m.*, to_jsonb(a) AS attribute,
+        COALESCE((
+          SELECT json_agg(l ORDER BY l."completedDate" DESC)
+          FROM (
+            SELECT * FROM mission_logs WHERE "missionId" = m.id
+            ORDER BY "completedDate" DESC LIMIT 30
+          ) l
+        ), '[]'::json) AS logs
+       FROM missions m JOIN attributes a ON a.id = m."attributeId"
+       WHERE m.id = $1 AND m."characterId" = $2`,
+      [id, character.id]
+    );
+    const mission = result.rows[0];
 
     if (!mission) {
       return NextResponse.json(
@@ -124,12 +126,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingMission = await prisma.mission.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-      },
-    });
+    const existingResult = await query(
+      `SELECT * FROM missions WHERE id = $1 AND "characterId" = $2`,
+      [id, character.id]
+    );
+    const existingMission = existingResult.rows[0];
 
     if (!existingMission) {
       return NextResponse.json(
@@ -143,12 +144,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const data = parsed.data;
 
     if (data.attributeId) {
-      const attribute = await prisma.attribute.findFirst({
-        where: {
-          id: data.attributeId,
-          characterId: character.id,
-        },
-      });
+      const attributeResult = await query(
+        `SELECT id FROM attributes WHERE id = $1 AND "characterId" = $2`,
+        [data.attributeId, character.id]
+      );
+      const attribute = attributeResult.rows[0];
 
       if (!attribute) {
         return NextResponse.json(
@@ -160,7 +160,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const updateData: Prisma.MissionUncheckedUpdateInput = {};
+    const updateData: Record<string, unknown> = {};
 
     if (data.attributeId !== undefined) updateData.attributeId = data.attributeId;
     if (data.title !== undefined) updateData.title = data.title;
@@ -191,15 +191,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.goldReward = reward.goldReward;
     }
 
-    const mission = await prisma.mission.update({
-      where: {
-        id,
-      },
-      data: updateData,
-      include: {
-        attribute: true,
-      },
+    const fields = Object.entries(updateData);
+    const values: unknown[] = [id, character.id];
+    const assignments = fields.map(([field, value]) => {
+      values.push(value);
+      return `"${field}" = $${values.length}`;
     });
+    const updated = await query(
+      `UPDATE missions SET ${assignments.join(", ")}, "updatedAt" = NOW()
+       WHERE id = $1 AND "characterId" = $2
+       RETURNING *`,
+      values
+    );
+    const mission = updated.rows[0];
+    const attributeResult = await query(
+      `SELECT * FROM attributes WHERE id = $1`,
+      [mission.attributeId]
+    );
+    mission.attribute = attributeResult.rows[0];
 
     return NextResponse.json({
       message: "Mission updated successfully.",
@@ -240,12 +249,11 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingMission = await prisma.mission.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-      },
-    });
+    const existingResult = await query(
+      `SELECT id FROM missions WHERE id = $1 AND "characterId" = $2`,
+      [id, character.id]
+    );
+    const existingMission = existingResult.rows[0];
 
     if (!existingMission) {
       return NextResponse.json(
@@ -256,11 +264,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    await prisma.mission.delete({
-      where: {
-        id,
-      },
-    });
+    await query(`DELETE FROM missions WHERE id = $1`, [id]);
 
     return NextResponse.json({
       message: "Mission deleted successfully.",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getTodayInTokyoDateOnly } from "@lifequest/lib/date";
 import { calculateCurrentStreakFromLogs } from "@lifequest/lib/streak";
@@ -40,69 +40,30 @@ export async function GET() {
       );
     }
 
-    const [attributes, missions, todayEvents] = await Promise.all([
-      prisma.attribute.findMany({
-        where: {
-          characterId: character.id,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      }),
-
-      prisma.mission.findMany({
-        where: {
-          characterId: character.id,
-          isActive: true,
-          OR: [
-            {
-              startDate: null,
-            },
-            {
-              startDate: {
-                lte: today,
-              },
-            },
-          ],
-          AND: [
-            {
-              OR: [
-                {
-                  endDate: null,
-                },
-                {
-                  endDate: {
-                    gte: today,
-                  },
-                },
-              ],
-            },
-          ],
-        },
-        include: {
-          attribute: true,
-          logs: {
-            where: {
-              completedDate: today,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      }),
-
-      prisma.calendarEvent.findMany({
-        where: {
-          userId: authUser.userId,
-          startDate: today,
-        },
-        orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
-      }),
+    const [attributeResult, missionResult, eventResult] = await Promise.all([
+      query(`SELECT * FROM attributes WHERE "characterId" = $1 ORDER BY "createdAt" ASC`, [character.id]),
+      query(
+        `SELECT m.*, to_jsonb(a) AS attribute,
+          EXISTS (SELECT 1 FROM mission_logs l WHERE l."missionId" = m.id AND l."completedDate" = $2) AS completed
+         FROM missions m JOIN attributes a ON a.id = m."attributeId"
+         WHERE m."characterId" = $1 AND m."isActive" = TRUE
+           AND (m."startDate" IS NULL OR m."startDate" <= $2)
+           AND (m."endDate" IS NULL OR m."endDate" >= $2)
+         ORDER BY m."createdAt" DESC`,
+        [character.id, today]
+      ),
+      query(
+        `SELECT * FROM calendar_events WHERE "userId" = $1 AND "startDate" = $2
+         ORDER BY "startDate" ASC, "createdAt" ASC`,
+        [authUser.userId, today]
+      ),
     ]);
+    const attributes = attributeResult.rows;
+    const missions = missionResult.rows;
+    const todayEvents = eventResult.rows;
 
     const todayMissions = missions.map((mission) => {
-      const completed = mission.logs.length > 0;
+      const completed = mission.completed;
 
       return {
         id: mission.id,
@@ -126,37 +87,28 @@ export async function GET() {
       };
     });
 
-    const recentLogs = await prisma.missionLog.findMany({
-      where: {
-        characterId: character.id,
-      },
-      select: {
-        completedDate: true,
-      },
-      orderBy: {
-        completedDate: "desc",
-      },
-      take: 365,
-    });
+    const recentLogs = await query<{ completedDate: Date }>(
+      `SELECT "completedDate" FROM mission_logs
+       WHERE "characterId" = $1 ORDER BY "completedDate" DESC LIMIT 365`,
+      [character.id]
+    ).then((result) => result.rows);
 
     const streak = calculateCurrentStreakFromLogs(recentLogs);
 
-    const quoteCount = await prisma.dailyQuote.count();
+    const quoteCountResult = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM daily_quotes`
+    );
+    const quoteCount = Number(quoteCountResult.rows[0]?.count ?? 0);
 
     let quote = null;
 
     if (quoteCount > 0) {
       const quoteIndex = getDailyQuoteIndex(today, quoteCount);
 
-      const quotes = await prisma.dailyQuote.findMany({
-        orderBy: {
-          createdAt: "asc",
-        },
-        skip: quoteIndex,
-        take: 1,
-      });
-
-      quote = quotes[0] ?? null;
+      quote = await query(
+        `SELECT * FROM daily_quotes ORDER BY "createdAt" ASC OFFSET $1 LIMIT 1`,
+        [quoteIndex]
+      ).then((result) => result.rows[0] ?? null);
     }
 
     const requiredExp = getRequiredExp(character.level);

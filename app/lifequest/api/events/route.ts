@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { parseDateOnlyUTC } from "@lifequest/lib/date";
-import { prisma } from "@lifequest/lib/prisma";
+import { randomUUID } from "node:crypto";
+import { query } from "@lifequest/lib/db";
 
 const eventSchema = z.object({
   title: z.string().min(1).max(120),
@@ -22,21 +23,19 @@ export async function GET(request: NextRequest) {
   const year = Number(request.nextUrl.searchParams.get("year"));
   const month = Number(request.nextUrl.searchParams.get("month"));
 
-  const where =
-    year && month >= 1 && month <= 12
-      ? {
-          userId: authUser.userId,
-          startDate: {
-            gte: new Date(Date.UTC(year, month - 1, 1)),
-            lt: new Date(Date.UTC(year, month, 1)),
-          },
-        }
-      : { userId: authUser.userId };
-
-  const events = await prisma.calendarEvent.findMany({
-    where,
-    orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
-  });
+  const monthFilter = year && month >= 1 && month <= 12;
+  const events = await query(
+    `SELECT * FROM calendar_events
+     WHERE "userId" = $1
+       AND ($2::boolean = FALSE OR ("startDate" >= $3 AND "startDate" < $4))
+     ORDER BY "startDate" ASC, "createdAt" ASC`,
+    [
+      authUser.userId,
+      monthFilter,
+      new Date(Date.UTC(year, month - 1, 1)),
+      new Date(Date.UTC(year, month, 1)),
+    ]
+  ).then((result) => result.rows);
 
   return NextResponse.json({ events });
 }
@@ -65,16 +64,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const event = await prisma.calendarEvent.create({
-    data: {
-      userId: authUser.userId,
-      title: parsed.data.title,
-      location: parsed.data.location || null,
-      content: parsed.data.content || null,
+  const event = await query(
+    `INSERT INTO calendar_events (id, "userId", title, location, content, "startDate", "endDate", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+    [
+      randomUUID(),
+      authUser.userId,
+      parsed.data.title,
+      parsed.data.location || null,
+      parsed.data.content || null,
       startDate,
       endDate,
-    },
-  });
+    ]
+  ).then((result) => result.rows[0]);
 
   return NextResponse.json({ event }, { status: 201 });
 }

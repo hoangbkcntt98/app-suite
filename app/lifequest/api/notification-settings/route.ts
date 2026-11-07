@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
-import { prisma } from "@lifequest/lib/prisma";
+import { randomUUID } from "node:crypto";
+import { query } from "@lifequest/lib/db";
 
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
@@ -13,11 +14,14 @@ const updateSettingsSchema = z.object({
 });
 
 async function getOrCreateSettings(userId: string) {
-  return prisma.notificationSetting.upsert({
-    where: { userId },
-    update: {},
-    create: { userId },
-  });
+  const result = await query(
+    `INSERT INTO notification_settings (id, "userId", "createdAt", "updatedAt")
+     VALUES ($1, $2, NOW(), NOW())
+     ON CONFLICT ("userId") DO UPDATE SET "userId" = EXCLUDED."userId"
+     RETURNING *`,
+    [randomUUID(), userId]
+  );
+  return result.rows[0];
 }
 
 export async function GET() {
@@ -48,10 +52,13 @@ export async function PATCH(request: NextRequest) {
 
   await getOrCreateSettings(authUser.userId);
 
-  const settings = await prisma.notificationSetting.update({
-    where: { userId: authUser.userId },
-    data: parsed.data,
-  });
+  const fields = Object.entries(parsed.data);
+  const assignments = fields.map(([field], index) => `"${field}" = $${index + 2}`);
+  const settings = await query(
+    `UPDATE notification_settings SET ${assignments.length ? `${assignments.join(", ")}, ` : ""}"updatedAt" = NOW()
+     WHERE "userId" = $1 RETURNING *`,
+    [authUser.userId, ...fields.map(([, value]) => value)]
+  ).then((result) => result.rows[0]);
 
   return NextResponse.json({ settings });
 }

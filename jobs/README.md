@@ -118,11 +118,13 @@ Run from the repository root:
 jobs/app-tools/.venv/bin/python jobs/create_grammar_example_video_jobs.py \
   --config jobs/app-tools/config.json \
   --schema openclaw \
-  --example-id 1801
+  --pattern-id 42 \
+  --step 4
 ```
 
 `--example-id` and `--pattern-id` are optional filters. Add `--force` to
-replace an existing output video. Configure AI chat/video/audio services under
+replace an existing output video. `--step` sets maximum concurrent example
+video tasks; it defaults to `1`. Configure AI chat/video/audio services under
 `ai` in app-tools config; job-specific overrides belong under
 `job_config.create_grammar_example_video_jobs`.
 
@@ -149,6 +151,17 @@ jobs/app-tools/.venv/bin/python jobs/create_word_creator_jobs.py \
   --duration 10 \
   --fps 25
 ```
+
+Run every eligible Kanji source with up to four tasks at once:
+
+```bash
+jobs/app-tools/.venv/bin/python jobs/create_all_word_creator_jobs.py \
+  --config jobs/app-tools/config.json \
+  --step 4
+```
+
+`--step` sets maximum concurrent Kanji source tasks for this batch runner.
+It defaults to `1`; values below `1` are rejected.
 
 `DATABASE_URL` selects shared database/schema; `VIDEO_ANKI_DATABASE_URL` can
 override external Anki storage. `VIDEO_OUTPUT_DIR`, `VIDEO_DATA_DIR`, and

@@ -8,6 +8,7 @@ export const revalidate = 0;
 
 type Example = { ja: string | null; vi: string | null; videoPath?: string | null };
 type Choice = {
+  id: string;
   label: string;
   answer: string;
   kanji?: string | null;
@@ -23,7 +24,7 @@ type Choice = {
 
 async function gameDeck() {
   const [words, kanji, grammar] = await Promise.all([
-    pool.query<Choice>(`SELECT "Word" AS label, "MeaningSource" AS answer,
+    pool.query<Choice>(`SELECT id::text AS id, "Word" AS label, "MeaningSource" AS answer,
         "Reading" AS reading,
         COALESCE("MeaningDestination", "Chineses") AS "meaningVi",
         json_build_array(
@@ -36,6 +37,7 @@ async function gameDeck() {
         AND NULLIF(BTRIM("MeaningSource"), '') IS NOT NULL
       ORDER BY id`),
     pool.query<Choice>(`SELECT
+        k.id::text AS id,
         r.resource_data->>'requiredVocabulary' AS label,
         r.resource_data->>'correctAnswer' AS answer,
         k."Kanji" AS kanji,
@@ -62,6 +64,7 @@ async function gameDeck() {
         AND r.resource_data IS NOT NULL
       ORDER BY k.id`),
     pool.query<Choice>(`SELECT
+        gp.id::text AS id,
         gp.pattern AS label,
         gp.meaning_vi AS answer,
         gp.meaning_vi AS "meaningVi",

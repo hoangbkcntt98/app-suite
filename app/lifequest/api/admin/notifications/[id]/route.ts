@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { requireAdmin } from "@lifequest/lib/admin/auth";
 
 export async function DELETE(
@@ -11,9 +11,7 @@ export async function DELETE(
 
   const { id } = await context.params;
 
-  await prisma.pushSubscription.delete({
-    where: { id },
-  });
+  await query(`DELETE FROM push_subscriptions WHERE id = $1`, [id]);
 
   return NextResponse.json({ message: "Subscription deleted." });
 }

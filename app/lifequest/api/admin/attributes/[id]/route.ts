@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { requireAdmin } from "@lifequest/lib/admin/auth";
 
 const updateAttributeSchema = z.object({
@@ -29,24 +29,28 @@ export async function PATCH(
   }
 
   try {
-    const attribute = await prisma.attribute.update({
-      where: { id },
-      data: parsed.data,
+    const fields = Object.entries(parsed.data);
+    const values: unknown[] = [id];
+    const assignments = fields.map(([field, value]) => {
+      values.push(value);
+      return `"${field}" = $${values.length}`;
     });
+    const result = await query(
+      `UPDATE attributes SET ${assignments.length ? `${assignments.join(", ")}, ` : ""}"updatedAt" = NOW()
+       WHERE id = $1 RETURNING *`,
+      values
+    );
+    const attribute = result.rows[0];
+    if (!attribute) {
+      return NextResponse.json({ message: "Attribute not found." }, { status: 404 });
+    }
 
     return NextResponse.json({ attribute });
   } catch (error) {
-    if ((error as { code?: string }).code === "P2002") {
+    if ((error as { code?: string }).code === "23505") {
       return NextResponse.json(
         { message: "Attribute name already exists for this character." },
         { status: 409 }
-      );
-    }
-
-    if ((error as { code?: string }).code === "P2025") {
-      return NextResponse.json(
-        { message: "Attribute not found." },
-        { status: 404 }
       );
     }
 
@@ -62,27 +66,26 @@ export async function DELETE(
   if (response) return response;
 
   const { id } = await context.params;
-  const attribute = await prisma.attribute.findUnique({
-    where: { id },
-    include: {
-      missions: true,
-    },
-  });
+  const result = await query<{ mission_count: number }>(
+    `SELECT COUNT(m.id)::int AS mission_count
+     FROM attributes a LEFT JOIN missions m ON m."attributeId" = a.id
+     WHERE a.id = $1 GROUP BY a.id`,
+    [id]
+  );
+  const attribute = result.rows[0];
 
   if (!attribute) {
     return NextResponse.json({ message: "Attribute not found." }, { status: 404 });
   }
 
-  if (attribute.missions.length > 0) {
+  if (attribute.mission_count > 0) {
     return NextResponse.json(
       { message: "Cannot delete attribute because it has missions." },
       { status: 400 }
     );
   }
 
-  await prisma.attribute.delete({
-    where: { id },
-  });
+  await query(`DELETE FROM attributes WHERE id = $1`, [id]);
 
   return NextResponse.json({ message: "Attribute deleted." });
 }

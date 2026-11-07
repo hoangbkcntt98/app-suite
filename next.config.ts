@@ -5,7 +5,14 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_MANGA_BASE_PATH: "/manga-web",
     NEXT_PUBLIC_LIFEQUEST_BASE_PATH: "/lifequest",
   },
+
   serverExternalPackages: ["archiver", "pg"],
+
+  experimental: {
+    cpus: 1,
+    webpackMemoryOptimizations: true,
+    webpackBuildWorker: true,
+  },
 };
 
 export default nextConfig;

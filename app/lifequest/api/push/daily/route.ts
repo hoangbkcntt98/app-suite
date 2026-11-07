@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { randomUUID } from "node:crypto";
+import { query } from "@lifequest/lib/db";
 import { formatDateKey, getCurrentTimeInTokyoHHMM, getTodayInTokyoDateOnly } from "@lifequest/lib/date";
 import { getTodayMissionSummary } from "@lifequest/lib/notifications/missions";
 import { getPushTemplate, renderTemplate } from "@lifequest/lib/notifications/templates";
@@ -20,19 +21,18 @@ export async function POST(request: NextRequest) {
     const today = getTodayInTokyoDateOnly();
     const todayKey = formatDateKey(today);
 
-    const users = await prisma.user.findMany({
-      where: {
-        pushSubscriptions: {
-          some: {},
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-        pushSubscriptions: true,
-        notificationSetting: true,
-      },
-    });
+    const users = await query(
+      `SELECT u.id, u.email,
+        COALESCE((
+          SELECT json_agg(json_build_object(
+            'id', p.id, 'endpoint', p.endpoint, 'p256dh', p.p256dh, 'auth', p.auth
+          )) FROM push_subscriptions p WHERE p."userId" = u.id
+        ), '[]'::json) AS "pushSubscriptions",
+        to_jsonb(ns) AS "notificationSetting"
+       FROM users u
+       LEFT JOIN notification_settings ns ON ns."userId" = u.id
+       WHERE EXISTS (SELECT 1 FROM push_subscriptions p WHERE p."userId" = u.id)`
+    ).then((result) => result.rows);
 
     let sent = 0;
     let failed = 0;
@@ -44,21 +44,19 @@ export async function POST(request: NextRequest) {
     ]);
 
     for (const user of users) {
-      const settings =
-        user.notificationSetting ??
-        (await prisma.notificationSetting.create({
-          data: { userId: user.id },
-        }));
+      const settings = user.notificationSetting ?? await query(
+        `INSERT INTO notification_settings (id, "userId", "createdAt", "updatedAt")
+         VALUES ($1, $2, NOW(), NOW()) RETURNING *`,
+        [randomUUID(), user.id]
+      ).then((result) => result.rows[0]);
 
       if (settings.missionEnabled && settings.missionTime === currentTime) {
-        const delivered = await prisma.pushNotificationDelivery.findFirst({
-          where: {
-            userId: user.id,
-            type: "MISSION_DAILY",
-            targetDate: today,
-            entityId: null,
-          },
-        });
+        const delivery = await query(
+          `SELECT id FROM push_notification_deliveries
+           WHERE "userId" = $1 AND type = 'MISSION_DAILY' AND "targetDate" = $2 AND "entityId" IS NULL`,
+          [user.id, today]
+        );
+        const delivered = delivery.rows[0];
 
         if (!delivered) {
           const summary = await getTodayMissionSummary(user.id);
@@ -81,36 +79,29 @@ export async function POST(request: NextRequest) {
           sent += result.sent;
           failed += result.failed;
 
-          await prisma.pushNotificationDelivery.create({
-            data: {
-              userId: user.id,
-              type: "MISSION_DAILY",
-              targetDate: today,
-              entityId: null,
-            },
-          });
+          await query(
+            `INSERT INTO push_notification_deliveries (id, "userId", type, "targetDate", "entityId", "createdAt")
+             VALUES ($1, $2, 'MISSION_DAILY', $3, NULL, NOW())`,
+            [randomUUID(), user.id, today]
+          );
         }
       } else {
         skipped += 1;
       }
 
       if (settings.eventEnabled && settings.eventTime === currentTime) {
-        const events = await prisma.calendarEvent.findMany({
-          where: {
-            userId: user.id,
-            startDate: today,
-          },
-        });
+        const events = await query(
+          `SELECT * FROM calendar_events WHERE "userId" = $1 AND "startDate" = $2`,
+          [user.id, today]
+        ).then((result) => result.rows);
 
         for (const event of events) {
-          const delivered = await prisma.pushNotificationDelivery.findFirst({
-            where: {
-              userId: user.id,
-              type: "EVENT_START",
-              targetDate: today,
-              entityId: event.id,
-            },
-          });
+          const delivery = await query(
+            `SELECT id FROM push_notification_deliveries
+             WHERE "userId" = $1 AND type = 'EVENT_START' AND "targetDate" = $2 AND "entityId" = $3`,
+            [user.id, today, event.id]
+          );
+          const delivered = delivery.rows[0];
 
           if (delivered) continue;
 
@@ -134,14 +125,11 @@ export async function POST(request: NextRequest) {
           sent += result.sent;
           failed += result.failed;
 
-          await prisma.pushNotificationDelivery.create({
-            data: {
-              userId: user.id,
-              type: "EVENT_START",
-              targetDate: today,
-              entityId: event.id,
-            },
-          });
+          await query(
+            `INSERT INTO push_notification_deliveries (id, "userId", type, "targetDate", "entityId", "createdAt")
+             VALUES ($1, $2, 'EVENT_START', $3, $4, NOW())`,
+            [randomUUID(), user.id, today, event.id]
+          );
         }
       }
     }

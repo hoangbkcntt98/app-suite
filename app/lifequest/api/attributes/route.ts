@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 
@@ -39,14 +40,10 @@ export async function GET() {
       );
     }
 
-    const attributes = await prisma.attribute.findMany({
-      where: {
-        characterId: character.id,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    const attributes = await query(
+      `SELECT * FROM attributes WHERE "characterId" = $1 ORDER BY "createdAt" ASC`,
+      [character.id]
+    ).then((result) => result.rows);
 
     return NextResponse.json({
       attributes,
@@ -101,16 +98,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const attribute = await prisma.attribute.create({
-      data: {
-        userId: authUser.userId,
-        characterId: character.id,
-        name,
-        value: value ?? 0,
-        icon,
-        color,
-      },
-    });
+    const attribute = await query(
+      `INSERT INTO attributes (id, "userId", "characterId", name, value, icon, color, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+      [randomUUID(), authUser.userId, character.id, name, value ?? 0, icon ?? null, color ?? null]
+    ).then((result) => result.rows[0]);
 
     return NextResponse.json(
       {
@@ -122,7 +114,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error("CREATE_ATTRIBUTE_ERROR", error);
 
-    if (getErrorCode(error) === "P2002") {
+    if (getErrorCode(error) === "23505") {
       return NextResponse.json(
         {
           message: "Attribute name already exists.",

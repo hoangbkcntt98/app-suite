@@ -24,6 +24,8 @@
 .live i, .dot { width: 8px; height: 8px; border-radius: 50%; background: #aaa; }
 .live i { background: #539641; box-shadow: 0 0 0 4px #53964120; }
 .signOut { border: 0; background: transparent; color: #667469; cursor: pointer; font: inherit; font-size: 12px; }
+.refreshNow { padding: 7px 10px; border: 1px solid #cbd5c7; border-radius: 7px; background: #fbfcf8; color: #526b3f; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.refreshNow:disabled { opacity: .55; cursor: wait; }
 
 .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; max-width: 1260px; margin: 54px auto 28px; }
 .kicker { margin: 0 0 9px; color: #7c8a7c; font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: .11em; }
@@ -87,10 +89,18 @@
 .empty { display: grid; min-height: 130px; place-items: center; padding: 20px; border: 1px dashed #cfd7cb; border-radius: 10px; color: #849086; font-size: 12px; text-align: center; }
 
 .runsCard { max-width: 1260px; margin: 18px auto 0; }
-.runTable { overflow-x: auto; }
+.activityFilters { display: flex; align-items: center; gap: 9px; }
+.activityFilters label { color: #788478; font-family: monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.activityFilters select { max-width: min(260px, 42vw); min-height: 34px; padding: 6px 28px 6px 9px; border: 1px solid #d8ded4; border-radius: 7px; background: #fff; color: var(--ink); font: inherit; font-size: 11px; }
+.deleteSelected { padding: 7px 10px; border: 1px solid #e4b8a9; border-radius: 6px; background: #fff7f3; color: #a24a36; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.deleteSelected:disabled { opacity: .5; cursor: not-allowed; }
+.runTable { max-height: min(62vh, 620px); overflow: auto; overscroll-behavior: contain; }
 .runHeader, .run { display: grid; grid-template-columns: minmax(170px, 1.5fr) minmax(85px, .6fr) minmax(120px, 1fr) minmax(125px, .8fr) 70px 72px; align-items: center; gap: 14px; min-width: 850px; }
-.runHeader { padding: 0 12px 9px; color: #879186; font-family: monospace; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+.runHeader { position: sticky; top: 0; z-index: 2; padding: 9px 12px; background: var(--panel); color: #879186; font-family: monospace; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
 .run { min-height: 63px; padding: 9px 12px; border-top: 1px solid #e7e9e2; }
+.runHeader, .run { grid-template-columns: 20px minmax(170px, 1.5fr) minmax(85px, .6fr) minmax(120px, 1fr) minmax(125px, .8fr) 70px minmax(140px, .9fr); }
+.runHeader > input, .run > input, .subtaskHeader > input, .subtaskRun > input { width: 14px; height: 14px; margin: 0; accent-color: #526b3f; cursor: pointer; }
+.runHeader > input:disabled, .run > input:disabled, .subtaskHeader > input:disabled, .subtaskRun > input:disabled { cursor: not-allowed; }
 .runName { display: grid; gap: 3px; min-width: 0; }
 .runName strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .runName small, .progressCell small { color: #818a81; font-family: monospace; font-size: 9px; }
@@ -101,6 +111,18 @@
 .run time { color: #748075; font-family: monospace; font-size: 9px; }
 .stopRun { padding: 6px 10px; border: 1px solid #e4b8a9; border-radius: 6px; background: #fff7f3; color: #a24a36; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; }
 .stopRun:disabled { opacity: .55; cursor: wait; }
+.runActions { display: flex; flex-wrap: wrap; gap: 5px; }
+.logButton { padding: 6px 9px; border: 1px solid #dce1d8; border-radius: 6px; background: #fafbf8; color: #516253; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.logButton:disabled { opacity: .5; cursor: not-allowed; }
+.subtaskHeader, .subtaskRun { display: grid; grid-template-columns: 20px minmax(110px, 1.1fr) minmax(85px, .7fr) minmax(120px, 1fr) minmax(125px, .9fr) minmax(130px, 1.1fr) minmax(125px, .9fr) 90px; align-items: center; gap: 12px; min-width: 1080px; }
+.subtaskHeader { position: sticky; top: 0; z-index: 2; padding: 9px 12px; background: var(--panel); color: #879186; font-family: monospace; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+.subtaskRun { min-height: 60px; padding: 9px 12px; border-top: 1px solid #e7e9e2; font-size: 11px; }
+.subtaskRun > code { overflow: hidden; color: #526c4f; font-family: monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.subtaskRun > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtaskRun time { color: #748075; font-family: monospace; font-size: 9px; }
+.logOverlay { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: #101b16b8; backdrop-filter: blur(5px); }
+.logCard { width: min(100%, 1100px); max-height: min(88vh, 900px); overflow: hidden; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 24px 90px #0005; }
+.logOutput { max-height: 560px; overflow: auto; margin: 0; padding: 14px; border-radius: 9px; background: #17211a; color: #dce8d7; font: 11px/1.55 monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .footer { max-width: 1260px; margin: 22px auto 0; color: #839085; font-family: monospace; font-size: 9px; letter-spacing: .04em; }
 .footer code { color: #526c4f; }
 .loading { width: min(100%, 500px); margin: 15vh auto; color: #68766c; font-size: 14px; }
@@ -117,6 +139,15 @@
   .metrics article { flex-direction: column; justify-content: center; gap: 5px; padding: 10px 8px; }
 }
 @media (max-width: 540px) {
+  .runsCard .sectionHead { align-items: flex-start; flex-direction: column; }
+  .activityFilters { width: 100%; flex-wrap: wrap; }
+  .activityFilters select { flex: 1; max-width: none; }
+  .header { align-items: flex-start; gap: 14px; }
+  .headerRight { flex-wrap: wrap; justify-content: flex-end; gap: 8px 12px; }
+  .live { font-size: 8px; }
+  .logOverlay { padding: 10px; }
+  .logCard { max-height: 94vh; padding: 15px; }
+  .logOutput { max-height: calc(94vh - 140px); }
   .heroStamp { width: 95px; height: 95px; padding: 13px; }
   .heroStamp strong { font-size: 31px; }
   .heroStamp span, .heroStamp small { font-size: 7px; }

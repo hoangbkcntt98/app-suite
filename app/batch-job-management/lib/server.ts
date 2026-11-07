@@ -1,6 +1,7 @@
 import "server-only";
 
 import { timingSafeEqual } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { cookies } from "next/headers";
@@ -9,8 +10,8 @@ import { Pool } from "pg";
 const ROOT = process.cwd();
 const COOKIE_NAME = "batch_job_management";
 const DEFAULT_CONFIG =
-  process.env.BATCH_JOB_DEFAULT_CONFIG ||
-  process.env.APP_TOOLS_CONFIG ||
+  process.env.BATCH_JOB_DEFAULT_CONFIG?.trim() ||
+  process.env.APP_TOOLS_CONFIG?.trim() ||
   "jobs/app-tools/config.json";
 
 function quoteIdentifier(value: string, label: string) {
@@ -95,6 +96,50 @@ export function batchJobCookieName() {
 
 export function getDefaultConfigPath() {
   return DEFAULT_CONFIG;
+}
+
+export async function getSubtaskRunSchemas() {
+  const schemas = new Set<string>();
+  const configuredSchema = process.env.BATCH_SUBTASK_DB_SCHEMA?.trim();
+  if (configuredSchema) schemas.add(configuredSchema);
+
+  const configPath = path.resolve(
+    /*turbopackIgnore: true*/ ROOT,
+    DEFAULT_CONFIG,
+  );
+  try {
+    const config = JSON.parse(await readFile(configPath, "utf8")) as {
+      database?: { schema?: unknown };
+      job_config?: Record<string, { database?: { schema?: unknown } }>;
+    };
+    if (typeof config.database?.schema === "string") {
+      schemas.add(config.database.schema);
+    }
+    for (const job of Object.values(config.job_config || {})) {
+      if (typeof job?.database?.schema === "string") {
+        schemas.add(job.database.schema);
+      }
+    }
+  } catch {
+    // Fall back to DATABASE_URL schema below when config is unavailable.
+  }
+
+  try {
+    const urlSchema = process.env.DATABASE_URL
+      ? new URL(process.env.DATABASE_URL).searchParams.get("schema")
+      : null;
+    if (urlSchema) schemas.add(urlSchema);
+  } catch {
+    // Invalid database URL will be reported by the query connection.
+  }
+
+  if (schemas.size === 0) schemas.add("app_suite");
+  for (const schema of schemas) quoteIdentifier(schema, "BATCH_SUBTASK_DB_SCHEMA");
+  return [...schemas];
+}
+
+export function quoteDatabaseIdentifier(value: string, label: string) {
+  return quoteIdentifier(value, label);
 }
 
 function repoRelativeFile(input: string, rootDir: string) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 
@@ -16,30 +16,25 @@ export async function GET() {
       );
     }
 
-    const [user, selectedCharacter] = await Promise.all([
-      prisma.user.findUnique({
-      where: {
-        id: authUser.userId,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        characters: {
-          select: {
-            id: true,
-            name: true,
-            className: true,
-            level: true,
-            exp: true,
-            gold: true,
-          },
-        },
-      },
-    }),
+    const [userResult, selectedCharacter] = await Promise.all([
+      query(
+        `SELECT u.id, u.email, u.role, u."createdAt",
+          COALESCE(
+            json_agg(json_build_object(
+              'id', c.id, 'name', c.name, 'className', c."className",
+              'level', c.level, 'exp', c.exp, 'gold', c.gold
+            )) FILTER (WHERE c.id IS NOT NULL),
+            '[]'::json
+          ) AS characters
+         FROM users u
+         LEFT JOIN characters c ON c."userId" = u.id
+         WHERE u.id = $1
+         GROUP BY u.id`,
+        [authUser.userId]
+      ),
       getSelectedCharacter(authUser.userId),
     ]);
+    const user = userResult.rows[0] ?? null;
 
     if (!user) {
       return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 
 const subscriptionSchema = z.object({
@@ -18,11 +19,11 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
   }
 
-  const count = await prisma.pushSubscription.count({
-    where: {
-      userId: authUser.userId,
-    },
-  });
+  const countResult = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM push_subscriptions WHERE "userId" = $1`,
+    [authUser.userId]
+  );
+  const count = Number(countResult.rows[0]?.count ?? 0);
 
   return NextResponse.json({
     subscribed: count > 0,
@@ -49,22 +50,14 @@ export async function POST(request: NextRequest) {
 
   const subscription = parsed.data;
 
-  await prisma.pushSubscription.upsert({
-    where: {
-      endpoint: subscription.endpoint,
-    },
-    create: {
-      userId: authUser.userId,
-      endpoint: subscription.endpoint,
-      p256dh: subscription.keys.p256dh,
-      auth: subscription.keys.auth,
-    },
-    update: {
-      userId: authUser.userId,
-      p256dh: subscription.keys.p256dh,
-      auth: subscription.keys.auth,
-    },
-  });
+  await query(
+    `INSERT INTO push_subscriptions (id, "userId", endpoint, p256dh, auth, "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+     ON CONFLICT (endpoint) DO UPDATE SET
+       "userId" = EXCLUDED."userId", p256dh = EXCLUDED.p256dh,
+       auth = EXCLUDED.auth, "updatedAt" = NOW()`,
+    [randomUUID(), authUser.userId, subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+  );
 
   return NextResponse.json({ subscribed: true });
 }
@@ -81,21 +74,17 @@ export async function DELETE(request: NextRequest) {
     | null;
 
   if (!body?.endpoint) {
-    await prisma.pushSubscription.deleteMany({
-      where: {
-        userId: authUser.userId,
-      },
-    });
+    await query(`DELETE FROM push_subscriptions WHERE "userId" = $1`, [
+      authUser.userId,
+    ]);
 
     return NextResponse.json({ subscribed: false });
   }
 
-  await prisma.pushSubscription.deleteMany({
-    where: {
-      userId: authUser.userId,
-      endpoint: body.endpoint,
-    },
-  });
+  await query(
+    `DELETE FROM push_subscriptions WHERE "userId" = $1 AND endpoint = $2`,
+    [authUser.userId, body.endpoint]
+  );
 
   return NextResponse.json({ subscribed: false });
 }

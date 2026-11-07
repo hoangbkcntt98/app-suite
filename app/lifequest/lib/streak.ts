@@ -1,5 +1,6 @@
-import { MissionLog } from "@prisma/client";
 import { getTodayInTokyoDateOnly } from "@lifequest/lib/date";
+
+type MissionLogDate = { completedDate: Date };
 
 function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -12,7 +13,7 @@ function addDays(date: Date, days: number) {
 }
 
 export function calculateCurrentStreakFromLogs(
-  logs: Pick<MissionLog, "completedDate">[]
+  logs: MissionLogDate[]
 ) {
   const completedDateSet = new Set(
     logs.map((log) => formatDateKey(log.completedDate))

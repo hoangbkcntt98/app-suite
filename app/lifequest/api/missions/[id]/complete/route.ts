@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { randomUUID } from "node:crypto";
+import { query, withTransaction } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getTodayInTokyoDateOnly } from "@lifequest/lib/date";
 import { calculateLevelUp } from "@lifequest/lib/level";
@@ -36,16 +37,13 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const mission = await prisma.mission.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-        isActive: true,
-      },
-      include: {
-        attribute: true,
-      },
-    });
+    const missionResult = await query(
+      `SELECT m.*, to_jsonb(a) AS attribute
+       FROM missions m JOIN attributes a ON a.id = m."attributeId"
+       WHERE m.id = $1 AND m."characterId" = $2 AND m."isActive" = TRUE`,
+      [id, character.id]
+    );
+    const mission = missionResult.rows[0];
 
     if (!mission) {
       return NextResponse.json(
@@ -56,14 +54,11 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingLog = await prisma.missionLog.findUnique({
-      where: {
-        missionId_completedDate: {
-          missionId: mission.id,
-          completedDate: today,
-        },
-      },
-    });
+    const existingResult = await query(
+      `SELECT id FROM mission_logs WHERE "missionId" = $1 AND "completedDate" = $2`,
+      [mission.id, today]
+    );
+    const existingLog = existingResult.rows[0];
 
     if (existingLog) {
       return NextResponse.json(
@@ -74,50 +69,42 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-     const updatedAttribute = await tx.attribute.update({
-       where: {
-         id: mission.attributeId,
-       },
-       data: {
-         value: {
-           increment: mission.statReward,
-         },
-       },
-     });
+    const result = await withTransaction(async (client) => {
+      const attributeResult = await client.query(
+        `UPDATE attributes SET value = value + $2, "updatedAt" = NOW()
+         WHERE id = $1 RETURNING *`,
+        [mission.attributeId, mission.statReward]
+      );
+      const updatedAttribute = attributeResult.rows[0];
 
       const expWithMultiplier = calculateExpWithMultiplier(
         updatedAttribute.value,
         updatedAttribute.multiplier
       );
 
-      const missionLog = await tx.missionLog.create({
-        data: {
-          missionId: mission.id,
-          userId: authUser.userId,
-          characterId: character.id,
-          completedDate: today,
-          expEarned: expWithMultiplier,
-          goldEarned: mission.goldReward,
-          statEarned: mission.statReward,
-        },
-      });
+      const logResult = await client.query(
+        `INSERT INTO mission_logs (
+          id, "missionId", "userId", "characterId", "completedDate",
+          "expEarned", "goldEarned", "statEarned", "createdAt"
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING *`,
+        [
+          randomUUID(), mission.id, authUser.userId, character.id, today,
+          expWithMultiplier, mission.goldReward, mission.statReward,
+        ]
+      );
+      const missionLog = logResult.rows[0];
 
       const rawExp = character.exp + expWithMultiplier;
       const rawGold = character.gold + mission.goldReward;
 
       const levelResult = calculateLevelUp(character.level, rawExp);
 
-      const updatedCharacter = await tx.character.update({
-        where: {
-          id: character.id,
-        },
-        data: {
-          exp: levelResult.exp,
-          level: levelResult.level,
-          gold: rawGold,
-        },
-      });
+      const characterResult = await client.query(
+        `UPDATE characters SET exp = $2, level = $3, gold = $4, "updatedAt" = NOW()
+         WHERE id = $1 RETURNING *`,
+        [character.id, levelResult.exp, levelResult.level, rawGold]
+      );
+      const updatedCharacter = characterResult.rows[0];
 
     return {
       missionLog,

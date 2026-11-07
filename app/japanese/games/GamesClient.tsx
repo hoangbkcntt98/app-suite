@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./page.module.css";
 
 type Example = { ja: string | null; vi: string | null; videoPath?: string | null };
 type Card = {
+  id: string;
+  gameType?: GameKey;
   label: string;
   answer: string;
   kanji?: string | null;
@@ -18,6 +20,7 @@ type Card = {
   choices?: string[];
 };
 type GameKey = "words" | "kanji" | "grammar";
+type ActiveGameKey = GameKey | "review";
 type Game = { key: GameKey; name: string; kicker: string; icon: string; prompt: string; color: string };
 type Deck = Record<GameKey, Card[]>;
 type WordCount = number | "all";
@@ -40,7 +43,7 @@ function shuffled<T>(items: T[]) {
 }
 
 export default function GamesClient({ deck }: { deck: Deck }) {
-  const [active, setActive] = useState<GameKey | null>(null);
+  const [active, setActive] = useState<ActiveGameKey | null>(null);
   const [wordSetupOpen, setWordSetupOpen] = useState(false);
   const [kanjiSetupOpen, setKanjiSetupOpen] = useState(false);
   const [grammarSetupOpen, setGrammarSetupOpen] = useState(false);
@@ -58,8 +61,11 @@ export default function GamesClient({ deck }: { deck: Deck }) {
   const [result, setResult] = useState<AnswerResult | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(QUESTION_SECONDS);
   const [videoPath, setVideoPath] = useState<string | null>(null);
+  const [timerEnabled, setTimerEnabled] = useState(true);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [reviewCount, setReviewCount] = useState(0);
 
-  const game = games.find((item) => item.key === active);
+  const game = games.find((item) => item.key === active) || (active === "review" ? { name: "Ôn tập", key: "words" as const } : undefined);
   const cards = roundCards;
   const card = cards[step];
   const options = useMemo(() => {
@@ -84,19 +90,44 @@ export default function GamesClient({ deck }: { deck: Deck }) {
   }, [deck.grammar.length]);
 
   useEffect(() => {
-    if ((active !== "words" && active !== "grammar") || !card || result) return;
+    Promise.all([
+      fetch("/japanese/api/favorites").then((response) => response.ok ? response.json() : []),
+      fetch("/japanese/api/review").then((response) => response.ok ? response.json() : []),
+    ]).then(([savedFavorites, savedReview]) => {
+      setFavorites(new Set(savedFavorites));
+      setReviewCount(savedReview.length);
+    }).catch(() => {});
+  }, []);
+
+  const rememberWrong = useCallback((item: Card) => {
+    const type = item.gameType || (active === "review" ? "words" : active);
+    if (!type) return;
+    fetch("/japanese/api/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, id: item.id, question: item }),
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const listResponse = await fetch("/japanese/api/review");
+      if (listResponse.ok) setReviewCount((await listResponse.json()).length);
+    }).catch(() => {});
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !timerEnabled || !card || result) return;
     const timer = window.setTimeout(() => {
       if (secondsLeft <= 1) {
         setSecondsLeft(0);
         setResult("timeout");
         setSelected(null);
         setStreak(0);
+        rememberWrong(card);
       } else {
         setSecondsLeft(secondsLeft - 1);
       }
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [active, card, result, secondsLeft]);
+  }, [active, card, result, secondsLeft, timerEnabled, rememberWrong]);
 
   function start(key: GameKey, count: WordCount = "all", shuffleOrder?: boolean) {
     const shouldShuffle = shuffleOrder ?? (key === "words" ? shuffleWords : key === "kanji" ? shuffleKanji : true);
@@ -104,7 +135,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
     const selectedCards = count !== "all"
       ? ordered.slice(0, count)
       : ordered;
-    setRoundCards(selectedCards);
+    setRoundCards(selectedCards.map((item) => ({ ...item, gameType: key })));
     setActive(key);
     setWordSetupOpen(false);
     setKanjiSetupOpen(false);
@@ -116,6 +147,20 @@ export default function GamesClient({ deck }: { deck: Deck }) {
     setResult(null);
     setSecondsLeft(QUESTION_SECONDS);
     setVideoPath(null);
+  }
+
+  async function startReview() {
+    const response = await fetch("/japanese/api/review");
+    if (!response.ok) return;
+    const items = await response.json() as { type: GameKey; id: string; question: Card }[];
+    setReviewCount(items.length);
+    setRoundCards(shuffled(items.map((item) => ({ ...item.question, id: item.id, gameType: item.type }))));
+    setActive("review");
+    setWordSetupOpen(false);
+    setKanjiSetupOpen(false);
+    setGrammarSetupOpen(false);
+    setStep(0); setScore(0); setStreak(0); setSelected(null); setResult(null);
+    setSecondsLeft(QUESTION_SECONDS); setVideoPath(null);
   }
 
   function chooseGame(key: GameKey) {
@@ -144,10 +189,38 @@ export default function GamesClient({ deck }: { deck: Deck }) {
       setResult("correct");
       setScore((value) => value + 10);
       setStreak((value) => value + 1);
+      if (active === "review" && card.gameType) {
+        fetch("/japanese/api/review", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: card.gameType, id: card.id }),
+        }).then(() => setReviewCount((count) => Math.max(0, count - 1))).catch(() => {});
+      }
     } else {
       setResult("wrong");
       setStreak(0);
+      rememberWrong(card);
     }
+  }
+
+  async function toggleFavorite() {
+    if (!card) return;
+    const type = card.gameType || (active === "review" ? "words" : active);
+    if (!type) return;
+    const key = `${type}:${card.id}`;
+    const isFavorite = favorites.has(key);
+    const response = await fetch("/japanese/api/favorites", {
+      method: isFavorite ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, id: card.id, question: card }),
+    });
+    if (!response.ok) return;
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (isFavorite) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function next() {
@@ -179,8 +252,12 @@ export default function GamesClient({ deck }: { deck: Deck }) {
           <small>{item.kicker}</small>
           <strong>{item.name}</strong>
           <p>{item.key === "words" ? `${deck.words.length} từ · chọn số lượng mỗi vòng.` : item.key === "kanji" ? `${deck.kanji.length} từ · chọn cách đọc đúng.` : `${deck.grammar.length} mẫu · chọn số lượng mỗi vòng.`}</p>
-          <b>{item.key === "words" || item.key === "grammar" ? "Thiết lập vòng →" : "Chơi ngay →"}</b>
+          <b>Thiết lập vòng →</b>
         </button>)}
+        <button className={`${styles.gameCard} ${styles.reviewCard}`} onClick={() => void startReview()} disabled={!reviewCount}>
+          <span>↻</span><small>ÔN TẬP</small><strong>Review Room</strong>
+          <p>{reviewCount} câu sai · chơi lại câu cần luyện.</p><b>{reviewCount ? "Ôn tập ngay →" : "Chưa có câu sai"}</b>
+        </button>
       </section>
       {wordSetupOpen ? <div className={styles.setupBackdrop}>
         <section className={styles.setupPanel} role="dialog" aria-modal="true" aria-labelledby="word-setup-title">
@@ -189,6 +266,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
           <p className={styles.setupKicker}>WORD BLITZ</p>
           <h2 id="word-setup-title">Chọn độ dài vòng</h2>
           <p className={styles.setupDescription}>Chọn thứ tự từ vựng cho vòng chơi.</p>
+          <label className={styles.timerSetting}><span>Đếm giờ mỗi câu</span><input type="checkbox" checked={timerEnabled} onChange={(event) => setTimerEnabled(event.target.checked)} /> {timerEnabled ? "Bật" : "Tắt"}</label>
           <div className={styles.orderChoices} role="group" aria-label="Thứ tự từ vựng">
             <button
               className={shuffleWords ? styles.orderSelected : ""}
@@ -227,6 +305,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
           <p className={styles.setupKicker}>KANJI RUSH</p>
           <h2 id="kanji-setup-title">Thiết lập vòng</h2>
           <p className={styles.setupDescription}>Chọn số câu và thứ tự từ vựng.</p>
+          <label className={styles.timerSetting}><span>Đếm giờ mỗi câu</span><input type="checkbox" checked={timerEnabled} onChange={(event) => setTimerEnabled(event.target.checked)} /> {timerEnabled ? "Bật" : "Tắt"}</label>
           <div className={styles.orderChoices} role="group" aria-label="Thứ tự câu hỏi">
             <button
               className={shuffleKanji ? styles.orderSelected : ""}
@@ -265,6 +344,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
           <p className={styles.setupKicker}>GRAMMAR SPRINT</p>
           <h2 id="grammar-setup-title">Thiết lập vòng</h2>
           <p className={styles.setupDescription}>Chọn thứ tự và số mẫu ngữ pháp.</p>
+          <label className={styles.timerSetting}><span>Đếm giờ mỗi câu</span><input type="checkbox" checked={timerEnabled} onChange={(event) => setTimerEnabled(event.target.checked)} /> {timerEnabled ? "Bật" : "Tắt"}</label>
           <div className={styles.orderChoices} role="group" aria-label="Thứ tự mẫu ngữ pháp">
             <button
               className={shuffleGrammar ? styles.orderSelected : ""}
@@ -302,7 +382,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
   if (!card) return <section className={styles.result}>
     <span>🏆</span><p>{game?.name}</p><h2>Hoàn thành!</h2>
     <strong>{score} XP</strong><small>Chuỗi cao nhất lượt này: {streak}</small>
-    <button onClick={() => start(
+    <button onClick={() => active === "review" ? void startReview() : start(
       active,
       active === "words" ? wordCount : active === "kanji" ? kanjiCount : grammarCount,
       active === "words" ? shuffleWords : active === "kanji" ? shuffleKanji : shuffleGrammar,
@@ -310,9 +390,10 @@ export default function GamesClient({ deck }: { deck: Deck }) {
     <button className={styles.ghost} onClick={exitGame}>Chọn game khác</button>
   </section>;
 
-  const isWordGame = active === "words";
-  const isKanjiGame = active === "kanji";
-  const isGrammarGame = active === "grammar";
+  const questionType = card.gameType || (active === "review" ? "words" : active);
+  const isWordGame = questionType === "words";
+  const isKanjiGame = questionType === "kanji";
+  const isGrammarGame = questionType === "grammar";
   const examples = (card.examples || []).filter((example) => example.ja?.trim());
 
   return <section className={styles.arena}>
@@ -321,7 +402,7 @@ export default function GamesClient({ deck }: { deck: Deck }) {
       <div className={styles.progress}><i style={{ width: `${((step + 1) / cards.length) * 100}%` }} /></div>
       <span>🔥 {streak}</span><b>{score} XP</b>
     </div>
-    {(isWordGame || isGrammarGame) ? <div className={styles.timerRow} aria-live="polite">
+    {timerEnabled ? <div className={styles.timerRow} aria-live="polite">
       <span>Thời gian</span>
       <strong className={secondsLeft <= 5 ? styles.timerUrgent : ""}>{secondsLeft}s</strong>
       <div className={styles.timerTrack}><i className={secondsLeft <= 5 ? styles.timerTrackUrgent : ""} style={{ width: `${(secondsLeft / QUESTION_SECONDS) * 100}%` }} /></div>
@@ -339,7 +420,10 @@ export default function GamesClient({ deck }: { deck: Deck }) {
       <article className={styles.answerModal} role="dialog" aria-modal="true" aria-labelledby="answer-detail-title">
         <div className={`${styles.answerBanner} ${result === "correct" ? styles.answerBannerGood : ""}`}>
           <span>{result === "correct" ? "ĐÚNG RỒI · +10 XP" : result === "timeout" ? "HẾT GIỜ · ĐÁP ÁN" : "ĐÁP ÁN"}</span>
-          <button aria-label="Tiếp tục" onClick={next}>×</button>
+          <div className={styles.answerActions}>
+            <button className={`${styles.favoriteButton} ${favorites.has(`${questionType}:${card.id}`) ? styles.favoriteActive : ""}`} aria-label={favorites.has(`${questionType}:${card.id}`) ? "Bỏ yêu thích" : "Thêm yêu thích"} onClick={() => void toggleFavorite()}>{favorites.has(`${questionType}:${card.id}`) ? "♥" : "♡"}</button>
+            <button aria-label="Tiếp tục" onClick={next}>×</button>
+          </div>
         </div>
         <div className={styles.answerWord}>
           <h2 id="answer-detail-title">{isKanjiGame ? card.kanji || card.label : card.label}</h2>

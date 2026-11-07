@@ -69,7 +69,7 @@ type ApiResponse = {
 type ImageAiModelOption = {
   label: string;
   model: string;
-  provider: "openclaw" | "bedrock";
+  provider: "openclaw";
 };
 
 type AiConfigResponse = {

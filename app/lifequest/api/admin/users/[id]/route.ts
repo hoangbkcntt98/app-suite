@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { requireAdmin } from "@lifequest/lib/admin/auth";
 
 const updateUserSchema = z.object({
@@ -25,38 +25,36 @@ export async function PATCH(
     return NextResponse.json({ message: "Invalid user data." }, { status: 400 });
   }
 
-  const data: {
-    email?: string;
-    passwordHash?: string;
-    role?: "USER" | "ADMIN";
-  } = {};
-
-  if (parsed.data.email) data.email = parsed.data.email;
-  if (parsed.data.role) data.role = parsed.data.role;
+  const values: unknown[] = [id];
+  const assignments: string[] = [];
+  if (parsed.data.email) {
+    values.push(parsed.data.email);
+    assignments.push(`email = $${values.length}`);
+  }
+  if (parsed.data.role) {
+    values.push(parsed.data.role);
+    assignments.push(`role = $${values.length}`);
+  }
   if (parsed.data.password) {
-    data.passwordHash = await bcrypt.hash(parsed.data.password, 10);
+    values.push(await bcrypt.hash(parsed.data.password, 10));
+    assignments.push(`"passwordHash" = $${values.length}`);
   }
 
   try {
-    const user = await prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-    });
+    const result = await query(
+      `UPDATE users SET ${assignments.join(", ")}, "updatedAt" = NOW()
+       WHERE id = $1 RETURNING id, email, role, "createdAt"`,
+      values
+    );
+    const user = result.rows[0];
+    if (!user) {
+      return NextResponse.json({ message: "User not found." }, { status: 404 });
+    }
 
     return NextResponse.json({ user });
   } catch (error) {
-    if ((error as { code?: string }).code === "P2002") {
+    if ((error as { code?: string }).code === "23505") {
       return NextResponse.json({ message: "Email already exists." }, { status: 409 });
-    }
-
-    if ((error as { code?: string }).code === "P2025") {
-      return NextResponse.json({ message: "User not found." }, { status: 404 });
     }
 
     throw error;
@@ -79,9 +77,10 @@ export async function DELETE(
     );
   }
 
-  await prisma.user.delete({
-    where: { id },
-  });
+  const result = await query(`DELETE FROM users WHERE id = $1`, [id]);
+  if (!result.rowCount) {
+    return NextResponse.json({ message: "User not found." }, { status: 404 });
+  }
 
   return NextResponse.json({ message: "User deleted." });
 }

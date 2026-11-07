@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { requireAdmin } from "@lifequest/lib/admin/auth";
 import { sendPushToSubscriptions } from "@lifequest/lib/notifications/web-push";
 
@@ -25,13 +25,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const subscriptions = await prisma.pushSubscription.findMany({
-    where: parsed.data.userId
-      ? {
-          userId: parsed.data.userId,
-        }
-      : undefined,
-  });
+  const subscriptions = await query<{
+    id: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+  }>(
+    `SELECT id, endpoint, p256dh, auth FROM push_subscriptions
+     WHERE $1::text IS NULL OR "userId" = $1`,
+    [parsed.data.userId ?? null]
+  ).then((result) => result.rows);
 
   const result = await sendPushToSubscriptions(subscriptions, {
     title: parsed.data.title,

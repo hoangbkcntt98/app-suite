@@ -1,22 +1,22 @@
-import { MissionDifficulty } from "@prisma/client";
+export type MissionDifficulty = "EASY" | "NORMAL" | "HARD" | "EPIC";
 
 export const MISSION_REWARDS = {
-  [MissionDifficulty.EASY]: {
+  EASY: {
     expReward: 10,
     goldReward: 2,
     statReward: 1,
   },
-  [MissionDifficulty.NORMAL]: {
+  NORMAL: {
     expReward: 20,
     goldReward: 5,
     statReward: 1,
   },
-  [MissionDifficulty.HARD]: {
+  HARD: {
     expReward: 40,
     goldReward: 10,
     statReward: 2,
   },
-  [MissionDifficulty.EPIC]: {
+  EPIC: {
     expReward: 80,
     goldReward: 20,
     statReward: 3,

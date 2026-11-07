@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 
 export async function requireAdmin() {
@@ -12,16 +12,11 @@ export async function requireAdmin() {
     };
   }
 
-  const user = await prisma.user.findUnique({
-    where: {
-      id: authUser.userId,
-    },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-    },
-  });
+  const result = await query<{ id: string; email: string; role: string }>(
+    `SELECT id, email, role FROM users WHERE id = $1 LIMIT 1`,
+    [authUser.userId]
+  );
+  const user = result.rows[0] ?? null;
 
   if (!user || user.role !== "ADMIN") {
     return {

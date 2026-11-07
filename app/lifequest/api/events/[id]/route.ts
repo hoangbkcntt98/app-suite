@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { parseDateOnlyUTC } from "@lifequest/lib/date";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 
 const updateEventSchema = z.object({
   title: z.string().min(1).max(120).optional(),
@@ -30,9 +30,11 @@ export async function PATCH(
     return NextResponse.json({ message: "Invalid event data." }, { status: 400 });
   }
 
-  const existing = await prisma.calendarEvent.findFirst({
-    where: { id, userId: authUser.userId },
-  });
+  const existingResult = await query(
+    `SELECT * FROM calendar_events WHERE id = $1 AND "userId" = $2`,
+    [id, authUser.userId]
+  );
+  const existing = existingResult.rows[0];
 
   if (!existing) {
     return NextResponse.json({ message: "Event not found." }, { status: 404 });
@@ -55,14 +57,22 @@ export async function PATCH(
     );
   }
 
-  const event = await prisma.calendarEvent.update({
-    where: { id },
-    data: {
-      ...parsed.data,
+  const result = await query(
+    `UPDATE calendar_events SET
+       title = $3, location = $4, content = $5, "startDate" = $6,
+       "endDate" = $7, "updatedAt" = NOW()
+     WHERE id = $1 AND "userId" = $2 RETURNING *`,
+    [
+      id,
+      authUser.userId,
+      parsed.data.title ?? existing.title,
+      parsed.data.location === undefined ? existing.location : parsed.data.location,
+      parsed.data.content === undefined ? existing.content : parsed.data.content,
       startDate,
       endDate,
-    },
-  });
+    ]
+  );
+  const event = result.rows[0];
 
   return NextResponse.json({ event });
 }
@@ -78,15 +88,13 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
-  const existing = await prisma.calendarEvent.findFirst({
-    where: { id, userId: authUser.userId },
-  });
-
-  if (!existing) {
+  const result = await query(
+    `DELETE FROM calendar_events WHERE id = $1 AND "userId" = $2`,
+    [id, authUser.userId]
+  );
+  if (!result.rowCount) {
     return NextResponse.json({ message: "Event not found." }, { status: 404 });
   }
-
-  await prisma.calendarEvent.delete({ where: { id } });
 
   return NextResponse.json({ message: "Event deleted." });
 }

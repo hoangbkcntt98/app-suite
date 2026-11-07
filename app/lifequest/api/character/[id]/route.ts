@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import {
   CHARACTER_COOKIE,
@@ -20,38 +20,25 @@ export async function DELETE(
     const { id } = await context.params;
     const selectedCharacter = await getSelectedCharacter(authUser.userId);
 
-    const character = await prisma.character.findFirst({
-      where: {
-        id,
-        userId: authUser.userId,
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
+    const characterResult = await query(
+      `SELECT id, name FROM characters WHERE id = $1 AND "userId" = $2`,
+      [id, authUser.userId]
+    );
+    const character = characterResult.rows[0];
 
     if (!character) {
       return NextResponse.json({ message: "Character not found." }, { status: 404 });
     }
 
-    await prisma.character.delete({
-      where: {
-        id: character.id,
-      },
-    });
+    await query(`DELETE FROM characters WHERE id = $1`, [character.id]);
 
     const shouldChooseNext =
       !selectedCharacter || selectedCharacter.id === character.id;
     const nextCharacter = shouldChooseNext
-      ? await prisma.character.findFirst({
-          where: {
-            userId: authUser.userId,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        })
+      ? await query(
+          `SELECT * FROM characters WHERE "userId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+          [authUser.userId]
+        ).then((result) => result.rows[0] ?? null)
       : selectedCharacter;
 
     const response = NextResponse.json({

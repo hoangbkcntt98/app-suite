@@ -124,3 +124,21 @@ arguments (one argument per line). The runner invokes the configured Python
 executable directly, adds `--config <path>`, saves schedules and run progress in
 PostgreSQL, and writes each run's output under `BATCH_JOB_LOG_DIR`.
 
+`Run now` queues the job by setting its next run time to the current time; it
+does not start the Python process from the web app. The persistent scheduler
+must be running to claim the job and create a batch run. It checks for due jobs
+every two seconds. If clicking `Run now` does not create a run, check
+`pm2 status` and start or inspect the scheduler:
+
+```bash
+pm2 start jobs/batch_job_scheduler.py \
+  --name batch-job-scheduler \
+  --interpreter /home/opc/app-suite/jobs/app-tools/.venv/bin/python \
+  --cwd /home/opc/app-suite
+pm2 logs batch-job-scheduler
+```
+
+Running a recurring job also enables its schedule, so pause it after the run if
+you do not want future interval runs. One-time jobs disable themselves when
+the scheduler claims them.
+

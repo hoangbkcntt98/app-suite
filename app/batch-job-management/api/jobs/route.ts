@@ -30,9 +30,14 @@ function databaseError(error: unknown) {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!(await hasBatchJobAccess())) {
     return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
+  }
+
+  const jobId = request.nextUrl.searchParams.get("job_id")?.trim() || null;
+  if (jobId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+    return NextResponse.json({ message: "Invalid job_id." }, { status: 400 });
   }
 
   try {
@@ -51,8 +56,10 @@ export async function GET() {
                 r.pid, r.log_path, r.error, r.started_at, r.finished_at
          FROM ${BATCH_JOB_RUNS_TABLE} r
          JOIN ${BATCH_JOBS_TABLE} j ON j.id = r.job_id
+         ${jobId ? "WHERE r.job_id = $1::uuid" : ""}
          ORDER BY r.started_at DESC
          LIMIT 100`,
+        jobId ? [jobId] : [],
       ),
     ]);
 

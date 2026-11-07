@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { requireAdmin } from "@lifequest/lib/admin/auth";
 
 const createAttributeSchema = z.object({
@@ -15,30 +16,20 @@ export async function GET() {
   const { response } = await requireAdmin();
   if (response) return response;
 
-  const attributes = await prisma.attribute.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-        },
-      },
-      character: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      _count: {
-        select: {
-          missions: true,
-        },
-      },
-    },
-  });
+  const result = await query(
+    `SELECT a.*,
+       json_build_object('id', u.id, 'email', u.email) AS user,
+       json_build_object('id', c.id, 'name', c.name) AS character,
+       (SELECT COUNT(*)::int FROM missions m WHERE m."attributeId" = a.id) AS "_count_missions"
+     FROM attributes a
+     JOIN users u ON u.id = a."userId"
+     JOIN characters c ON c.id = a."characterId"
+     ORDER BY a."createdAt" DESC`
+  );
+  const attributes = result.rows.map((row) => ({
+    ...row,
+    _count: { missions: row._count_missions },
+  }));
 
   return NextResponse.json({ attributes });
 }
@@ -58,17 +49,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const character = await prisma.character.findFirst({
-      where: {
-        userId: parsed.data.userId,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-      select: {
-        id: true,
-      },
-    });
+    const characterResult = await query(
+      `SELECT id FROM characters WHERE "userId" = $1 ORDER BY "createdAt" ASC LIMIT 1`,
+      [parsed.data.userId]
+    );
+    const character = characterResult.rows[0];
 
     if (!character) {
       return NextResponse.json(
@@ -77,16 +62,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const attribute = await prisma.attribute.create({
-      data: {
-        ...parsed.data,
-        characterId: character.id,
-      },
-    });
+    const attribute = await query(
+      `INSERT INTO attributes (id, "userId", "characterId", name, value, icon, color, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+      [
+        randomUUID(),
+        parsed.data.userId,
+        character.id,
+        parsed.data.name,
+        parsed.data.value,
+        parsed.data.icon ?? null,
+        parsed.data.color ?? null,
+      ]
+    ).then((result) => result.rows[0]);
 
     return NextResponse.json({ attribute }, { status: 201 });
   } catch (error) {
-    if ((error as { code?: string }).code === "P2002") {
+    if ((error as { code?: string }).code === "23505") {
       return NextResponse.json(
         { message: "Attribute name already exists for this character." },
         { status: 409 }

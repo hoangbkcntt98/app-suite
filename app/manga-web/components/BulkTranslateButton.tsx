@@ -9,7 +9,7 @@ type BulkStatus = "idle" | "running" | "completed" | "failed" | "stopped";
 type AiModelOption = {
   label: string;
   model: string;
-  provider: "openclaw" | "bedrock";
+  provider: "openclaw";
 };
 
 type AiConfigResponse = {
@@ -350,12 +350,9 @@ export default function BulkTranslateButton({
   const running = status === "running";
   const done = totalCount > 0 && translatedCount >= totalCount;
   const selectedModel = aiModels[selectedAiModel] ?? aiModels[0];
-  const activeModel =
-    selectedModel?.provider === "openclaw"
-      ? openClawModel.trim() || selectedModel.model
-      : selectedModel?.model;
+  const activeModel = openClawModel.trim() || selectedModel?.model;
   const modelSummary = selectedModel
-    ? `${selectedModel.provider === "openclaw" ? "OpenClaw" : "Amazon Bedrock"} - ${activeModel}`
+    ? `OpenClaw - ${activeModel}`
     : "AI model unavailable";
 
   return (

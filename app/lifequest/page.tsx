@@ -19,13 +19,6 @@ export default function HomePage() {
 
         <div className="flex gap-4 justify-center">
           <Link
-            href={appPath("/register")}
-            className="rounded-xl bg-indigo-500 px-6 py-3 font-medium hover:bg-indigo-400"
-          >
-            Bắt đầu
-          </Link>
-
-          <Link
             href={appPath("/login")}
             className="rounded-xl border border-slate-700 px-6 py-3 font-medium hover:bg-slate-800"
           >

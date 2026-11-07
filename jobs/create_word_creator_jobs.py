@@ -192,7 +192,13 @@ class WordCreatorJob:
                      BTRIM(a."RequiredVocabulary") AS vocabulary
               FROM public.anki_kanji a
               WHERE NULLIF(BTRIM(a."RequiredVocabulary"), '') IS NOT NULL
+                AND a.anki_note_id IS NOT NULL
                 AND a."Kanji" = ANY(%s::text[])
+                AND NOT EXISTS (
+                  SELECT 1 FROM public.anki_videos v
+                  WHERE v.anki_note_id = a.anki_note_id
+                    AND NULLIF(BTRIM(v.video_path), '') IS NOT NULL
+                )
               ORDER BY a."Kanji" """, (self.args.source,))
             return list(cursor.fetchall())
 
@@ -351,17 +357,28 @@ class WordCreatorJob:
               (row["anki_note_id"], source, vocabulary, *answers, correct_index,
                answers[correct_index], str(html_path), relative_path, self.duration, actual_fps))
         self.database.commit()
+        try:
+            with self.anki_database.cursor() as cursor:
+                cursor.execute(
+                    """UPDATE public.anki_videos
+                       SET video_path = %s
+                       WHERE anki_note_id = %s""",
+                    (row["anki_note_id"], relative_path),
+                )
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        """INSERT INTO public.anki_videos (anki_note_id, video_path)
+                           VALUES (%s, %s)""",
+                        (row["anki_note_id"], relative_path),
+                    )
+            self.anki_database.commit()
+        except Exception:
+            self.anki_database.rollback()
+            raise
         return relative_path
 
     def run(self) -> int:
-        with self.anki_database.cursor() as cursor:
-            cursor.execute("""SELECT a.anki_note_id, a."Kanji" AS source,
-                     BTRIM(a."RequiredVocabulary") AS vocabulary
-              FROM public.anki_kanji a
-              WHERE NULLIF(BTRIM(a."RequiredVocabulary"), '') IS NOT NULL
-                AND a."Kanji" = ANY(%s::text[])
-              ORDER BY a."Kanji" """, (self.args.source,))
-            rows = list(cursor.fetchall())
+        rows = self.read_notes()
         generated = errors = 0
         for number, row in enumerate(rows, 1):
             self.logger.info("Processing %s/%s: %s / %s", number, len(rows), row["source"], row["vocabulary"])
@@ -371,6 +388,7 @@ class WordCreatorJob:
                 self.logger.info("Saved video: %s", path)
             except Exception:
                 self.database.rollback()
+                self.anki_database.rollback()
                 errors += 1
                 self.logger.exception("Failed source=%s vocabulary=%s", row["source"], row["vocabulary"])
         self.logger.info("Finished: %s/%s generated, %s failed.", generated, len(rows), errors)

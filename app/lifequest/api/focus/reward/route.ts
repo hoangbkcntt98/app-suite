@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 
 const focusRewardSchema = z.object({
   minutes: z.coerce.number().int().min(1).max(200),
@@ -35,16 +35,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const updatedCharacter = await prisma.character.update({
-      where: {
-        id: character.id,
-      },
-      data: {
-        gold: {
-          increment: parsed.data.minutes,
-        },
-      },
-    });
+    const result = await query(
+      `UPDATE characters SET gold = gold + $2, "updatedAt" = NOW()
+       WHERE id = $1 RETURNING id, gold`,
+      [character.id, parsed.data.minutes]
+    );
+    const updatedCharacter = result.rows[0];
 
     return NextResponse.json({
       reward: {

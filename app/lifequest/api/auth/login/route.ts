@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { signToken } from "@lifequest/lib/auth";
 
 const loginSchema = z.object({
@@ -26,11 +26,13 @@ export async function POST(request: NextRequest) {
 
         const { email, password } = parsed.data;
 
-        const user = await prisma.user.findUnique({
-            where: {
-                email,
-            },
-        });
+        const userResult = await query<{
+            id: string;
+            email: string;
+            passwordHash: string;
+            role: string;
+        }>(`SELECT id, email, "passwordHash", role FROM users WHERE email = $1`, [email]);
+        const user = userResult.rows[0];
 
         if (!user) {
             return NextResponse.json(
@@ -52,11 +54,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const characterCount = await prisma.character.count({
-            where: {
-                userId: user.id,
-            },
-        });
+        const characterResult = await query<{ count: string }>(
+            `SELECT COUNT(*)::text AS count FROM characters WHERE "userId" = $1`,
+            [user.id]
+        );
+        const characterCount = Number(characterResult.rows[0]?.count ?? 0);
 
         const token = signToken({
             userId: user.id,

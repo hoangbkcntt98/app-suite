@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import {
   addDaysUTC,
@@ -44,44 +44,39 @@ export async function GET() {
       );
     }
 
-    const [logs, activeMissions, attributes] = await Promise.all([
-
-      prisma.missionLog.findMany({
-        where: {
-          characterId: character.id,
-          completedDate: {
-            gte: startDate,
-            lt: endDateExclusive,
-          },
-        },
-        include: {
-          mission: {
-            include: {
-              attribute: true,
-            },
-          },
-        },
-        orderBy: {
-          completedDate: "asc",
-        },
-      }),
-
-      prisma.mission.findMany({
-        where: {
-          characterId: character.id,
-          isActive: true,
-        },
-      }),
-
-      prisma.attribute.findMany({
-        where: {
-          characterId: character.id,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      }),
+    type LogRow = {
+      completedDate: Date;
+      expEarned: number;
+      goldEarned: number;
+      statEarned: number;
+      mission: {
+        id: string;
+        title: string;
+        difficulty: string;
+        attributeId: string;
+        attribute: { id: string; name: string; icon: string | null; color: string | null };
+      };
+    };
+    const [logResult, missionResult, attributeResult] = await Promise.all([
+      query<LogRow>(
+        `SELECT l."completedDate", l."expEarned", l."goldEarned", l."statEarned",
+          json_build_object(
+            'id', m.id, 'title', m.title, 'difficulty', m.difficulty,
+            'attributeId', m."attributeId",
+            'attribute', json_build_object('id', a.id, 'name', a.name, 'icon', a.icon, 'color', a.color)
+          ) AS mission
+         FROM mission_logs l JOIN missions m ON m.id = l."missionId"
+         JOIN attributes a ON a.id = m."attributeId"
+         WHERE l."characterId" = $1 AND l."completedDate" >= $2 AND l."completedDate" < $3
+         ORDER BY l."completedDate" ASC`,
+        [character.id, startDate, endDateExclusive]
+      ),
+      query(`SELECT id FROM missions WHERE "characterId" = $1 AND "isActive" = TRUE`, [character.id]),
+      query(`SELECT * FROM attributes WHERE "characterId" = $1 ORDER BY "createdAt" ASC`, [character.id]),
     ]);
+    const logs = logResult.rows;
+    const activeMissions = missionResult.rows;
+    const attributes = attributeResult.rows;
 
     const logsByDate = new Map<string, typeof logs>();
 

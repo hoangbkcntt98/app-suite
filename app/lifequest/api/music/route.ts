@@ -8,7 +8,7 @@ import Busboy from "busboy";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { apiPath } from "@lifequest/lib/paths";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 
 export const runtime = "nodejs";
 
@@ -161,17 +161,12 @@ async function listTracks(currentUserId: string): Promise<MusicTrack[]> {
     const ownerDirs = (await readdir(/*turbopackIgnore: true*/ UPLOAD_ROOT, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
-    const users = await prisma.user.findMany({
-      where: {
-        id: {
-          in: ownerDirs,
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
+    const users = ownerDirs.length
+      ? await query<{ id: string; email: string }>(
+          `SELECT id, email FROM users WHERE id = ANY($1::text[])`,
+          [ownerDirs]
+        ).then((result) => result.rows)
+      : [];
     const userById = new Map(users.map((user) => [user.id, user]));
     const tracksByOwner = await Promise.all(
       ownerDirs.map(async (ownerId) => {

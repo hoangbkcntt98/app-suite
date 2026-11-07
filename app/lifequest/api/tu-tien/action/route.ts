@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query, withTransaction } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 import {
@@ -38,7 +38,7 @@ function seededRng(seed: number, turn: number): () => number {
   };
 }
 
-function ruleResultJson(result: RuleResult): Prisma.InputJsonValue {
+function ruleResultJson(result: RuleResult) {
   return {
     success: result.success,
     cultivationGain: result.cultivationGain,
@@ -64,24 +64,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const game = await prisma.tuTienGame.findFirst({
-      where: {
-        characterId: character.id,
-        status: "active",
-      },
-      include: {
-        player: true,
-        world: true,
-        scenes: {
-          orderBy: { turn: "desc" },
-          take: 1,
-        },
-        history: {
-          orderBy: { turn: "desc" },
-          take: 30,
-        },
-      },
-    });
+    const gameResult = await query(
+      `SELECT g.*, to_jsonb(p) AS player, to_jsonb(w) AS world
+       FROM tu_tien_games g
+       LEFT JOIN tu_tien_players p ON p."gameId" = g.id
+       LEFT JOIN tu_tien_worlds w ON w."gameId" = g.id
+       WHERE g."characterId" = $1 AND g.status = 'active' LIMIT 1`,
+      [character.id]
+    );
+    const game = gameResult.rows[0];
+    if (game) {
+      const [sceneResult, historyResult] = await Promise.all([
+        query(
+          `SELECT * FROM tu_tien_scenes WHERE "gameId" = $1 ORDER BY turn DESC LIMIT 1`,
+          [game.id]
+        ),
+        query(
+          `SELECT * FROM tu_tien_histories WHERE "gameId" = $1 ORDER BY turn DESC LIMIT 30`,
+          [game.id]
+        ),
+      ]);
+      game.scenes = sceneResult.rows;
+      game.history = historyResult.rows;
+    }
 
     if (!game || !game.player || !game.world) {
       return NextResponse.json(
@@ -136,7 +141,7 @@ export async function POST(request: NextRequest) {
       gainMult: game.gainMult,
       dangerMult: game.dangerMult,
       turn: game.turn,
-      history: game.history.map((h) => `Turn ${h.turn}: ${h.action}`).slice().reverse(),
+      history: game.history.map((h: { turn: number; action: string }) => `Turn ${h.turn}: ${h.action}`).slice().reverse(),
       currentScene: "playing",
     };
 
@@ -148,62 +153,41 @@ export async function POST(request: NextRequest) {
       narratorModel
     );
 
-    await prisma.$transaction(async (tx) => {
-      await tx.tuTienPlayer.update({
-        where: { id: game.player!.id },
-        data: {
-          cultivation: gameState.player.cultivation,
-          realm: gameState.player.realm,
-          hp: gameState.player.hp,
-          spiritStones: gameState.player.spiritStones,
-          will: gameState.player.will,
-          luck: gameState.player.luck,
-          reputation: gameState.player.reputation,
-          inventory: gameState.player.inventory,
-          age: gameState.player.age,
-          relations: gameState.player.relations,
-          flags: gameState.player.flags,
-        },
-      });
+    await withTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE tu_tien_players SET cultivation=$2, realm=$3, hp=$4, "spiritStones"=$5,
+           will=$6, luck=$7, reputation=$8, inventory=$9, age=$10, relations=$11,
+           flags=$12, "updatedAt"=NOW() WHERE id=$1`,
+        [
+          game.player.id, gameState.player.cultivation, gameState.player.realm,
+          gameState.player.hp, gameState.player.spiritStones, gameState.player.will,
+          gameState.player.luck, gameState.player.reputation, gameState.player.inventory,
+          gameState.player.age, gameState.player.relations, gameState.player.flags,
+        ]
+      );
 
-      await tx.tuTienWorld.update({
-        where: { id: game.world!.id },
-        data: {
-          year: gameState.world.year,
-          publicEvents: gameState.world.publicEvents,
-        },
-      });
+      await tx.query(
+        `UPDATE tu_tien_worlds SET year=$2, "publicEvents"=$3, "updatedAt"=NOW() WHERE id=$1`,
+        [game.world.id, gameState.world.year, gameState.world.publicEvents]
+      );
 
-      await tx.tuTienGame.update({
-        where: { id: game.id },
-        data: { turn: gameState.turn },
-      });
+      await tx.query(
+        `UPDATE tu_tien_games SET turn=$2, status=$3, "updatedAt"=NOW() WHERE id=$1`,
+        [game.id, gameState.turn, gameState.player.hp <= 0 ? "ended" : game.status]
+      );
 
-      await tx.tuTienHistory.create({
-        data: {
-          gameId: game.id,
-          turn: game.turn,
-          action,
-          result: ruleResultJson(result),
-        },
-      });
+      await tx.query(
+        `INSERT INTO tu_tien_histories (id, "gameId", turn, action, result, "createdAt")
+         VALUES ($1,$2,$3,$4,$5,NOW())`,
+        [randomUUID(), game.id, game.turn, action, ruleResultJson(result)]
+      );
 
-      await tx.tuTienScene.create({
-        data: {
-          gameId: game.id,
-          turn: gameState.turn,
-          title: scene.title,
-          story: scene.story,
-          choices: scene.choices,
-        },
-      });
+      await tx.query(
+        `INSERT INTO tu_tien_scenes (id, "gameId", turn, title, story, choices, "createdAt")
+         VALUES ($1,$2,$3,$4,$5,$6,NOW())`,
+        [randomUUID(), game.id, gameState.turn, scene.title, scene.story, scene.choices]
+      );
 
-      if (gameState.player.hp <= 0) {
-        await tx.tuTienGame.update({
-          where: { id: game.id },
-          data: { status: "ended" },
-        });
-      }
     });
 
     return NextResponse.json({

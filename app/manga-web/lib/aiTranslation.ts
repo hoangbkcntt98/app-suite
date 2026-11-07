@@ -1,13 +1,7 @@
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-  type ImageFormat,
-} from "@aws-sdk/client-bedrock-runtime";
 import { readFile } from "fs/promises";
 import { extname } from "path";
 import { pool } from "@manga/lib/db";
 import {
-  getStoredAiModel,
   resolveImageAiSelection,
   type ImageAiSelection,
 } from "@manga/lib/aiModels";
@@ -235,7 +229,10 @@ export async function requestOpenClaw({
   return { content, model };
 }
 
-function imageFormatFrom(contentType: string | null, path: string): ImageFormat {
+function imageFormatFrom(
+  contentType: string | null,
+  path: string
+): "png" | "jpeg" | "gif" | "webp" {
   const normalizedType = contentType?.split(";", 1)[0].trim().toLowerCase();
   if (normalizedType === "image/png") return "png";
   if (normalizedType === "image/jpeg" || normalizedType === "image/jpg") {
@@ -290,88 +287,6 @@ async function loadImageForOpenClaw(image: ImageRecord) {
   const format = imageFormatFrom(contentType, path);
   const mimeType = format === "jpeg" ? "image/jpeg" : `image/${format}`;
   return `data:${mimeType};base64,${bytes.toString("base64")}`;
-}
-
-async function loadImageForBedrock(image: ImageRecord) {
-  if (image.store_images_locally && image.local_path) {
-    return {
-      bytes: await readFile(image.local_path),
-      format: imageFormatFrom(null, image.local_path),
-    };
-  }
-
-  const imageUrl = new URL(image.src);
-  const response = await fetch(imageUrl, {
-    cache: "no-store",
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-      Referer: `${imageUrl.origin}/`,
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36",
-    },
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Could not download image for Bedrock (${response.status}).`);
-  }
-
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    format: imageFormatFrom(response.headers.get("content-type"), imageUrl.pathname),
-  };
-}
-
-async function requestBedrock({
-  image,
-  maxTokens,
-  message,
-  model,
-  temperature,
-}: {
-  image?: ImageRecord;
-  maxTokens: number;
-  message: string;
-  model: string;
-  temperature: number;
-}) {
-  const region = process.env.MANGA_BEDROCK_REGION || process.env.MANGA_AWS_REGION;
-  if (!region) {
-    throw new Error("Amazon Bedrock region is not configured.");
-  }
-
-  const imageContent = image ? await loadImageForBedrock(image) : null;
-  const client = new BedrockRuntimeClient({ region });
-  const response = await client.send(
-    new ConverseCommand({
-      modelId: model,
-      messages: [
-        {
-          role: "user",
-          content: imageContent
-            ? [
-                { text: message },
-                {
-                  image: {
-                    format: imageContent.format,
-                    source: { bytes: imageContent.bytes },
-                  },
-                },
-              ]
-            : [{ text: message }],
-        },
-      ],
-      inferenceConfig: { maxTokens, temperature },
-    })
-  );
-  const content = (response.output?.message?.content ?? [])
-    .flatMap((block) => (typeof block.text === "string" ? [block.text] : []))
-    .join("\n")
-    .trim();
-  if (!content) {
-    throw new Error("Amazon Bedrock returned an empty response.");
-  }
-
-  return { content, model: `bedrock:${model}` };
 }
 
 export async function requestOpenClawText({
@@ -444,16 +359,6 @@ export async function requestImageAi({
   selection?: ImageAiSelection;
 }) {
   const selection = requestedSelection ?? resolveImageAiSelection();
-  if (selection.provider === "bedrock") {
-    return requestBedrock({
-      image,
-      maxTokens: 300,
-      message: `Hãy trả lời bằng tiếng Việt: ${message.trim()}`,
-      model: selection.model,
-      temperature: 0.3,
-    });
-  }
-
   return requestOpenClaw({
     image,
     message,
@@ -476,15 +381,6 @@ export async function requestTextAi({
   temperature?: number;
 }) {
   const selection = requestedSelection ?? resolveImageAiSelection();
-  if (selection.provider === "bedrock") {
-    return requestBedrock({
-      maxTokens,
-      message,
-      model: selection.model,
-      temperature,
-    });
-  }
-
   return requestOpenClawText({
     maxTokens,
     message,
@@ -546,20 +442,11 @@ export async function translateImageWithAi({
   selection?: ImageAiSelection;
 }) {
   const selection = requestedSelection ?? resolveImageAiSelection();
-  const { content, model } =
-    selection.provider === "bedrock"
-      ? await requestBedrock({
-          image,
-          maxTokens: 1000,
-          message: TRANSLATE_PROMPT,
-          model: selection.model,
-          temperature: 0,
-        })
-      : await requestOpenClaw({
-          image,
-          model: selection.model,
-          translate: true,
-        });
+  const { content } = await requestOpenClaw({
+    image,
+    model: selection.model,
+    translate: true,
+  });
 
   let apiResponse: ApiResponse;
   try {
@@ -587,7 +474,7 @@ export async function translateImageWithAi({
   await saveAiResponse({
     action: "translate",
     image,
-    model: selection.provider === "bedrock" ? model : getStoredAiModel(selection),
+    model: selection.model,
     prompt: TRANSLATE_PROMPT,
     response: apiResponse,
   });

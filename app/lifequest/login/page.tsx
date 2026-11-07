@@ -3,14 +3,13 @@
 import { appPath } from "@lifequest/lib/paths";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { apiFetch } from "@lifequest/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState("test@example.com");
-  const [password, setPassword] = useState("123456");
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -118,10 +117,7 @@ export default function LoginPage() {
         </button>
 
         <p className="text-sm text-slate-400 text-center">
-          Chưa có tài khoản?{" "}
-          <Link href={appPath("/register")} className="text-indigo-400 hover:underline">
-            Tạo tài khoản
-          </Link>
+          Đăng ký tài khoản đang tạm khóa.
         </p>
       </form>
     </main>

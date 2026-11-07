@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CharacterClass } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query, withTransaction } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { DEFAULT_ATTRIBUTES } from "@lifequest/lib/default-attributes";
 import { CHARACTER_COOKIE, getSelectedCharacter } from "@lifequest/lib/character/session";
 
+const characterClasses = ["KIEM_TU", "DAO_TU", "THE_TU"] as const;
 const createCharacterSchema = z.object({
  name: z.string().min(1).max(30),
-  className: z.nativeEnum(CharacterClass).default(CharacterClass.KIEM_TU),
+  className: z.enum(characterClasses).default("KIEM_TU"),
  avatarUrl: z.string().url().optional().nullable(),
 });
 
@@ -25,24 +26,16 @@ export async function GET() {
       );
     }
 
-    const characters = await prisma.character.findMany({
-      where: {
-        userId: authUser.userId,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const characters = await query(
+      `SELECT * FROM characters WHERE "userId" = $1 ORDER BY "createdAt" DESC`,
+      [authUser.userId]
+    ).then((result) => result.rows);
     const selectedCharacter = await getSelectedCharacter(authUser.userId);
 
-    const attributes = await prisma.attribute.findMany({
-      where: {
-        characterId: selectedCharacter?.id ?? "",
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    const attributes = await query(
+      `SELECT * FROM attributes WHERE "characterId" = $1 ORDER BY "createdAt" ASC`,
+      [selectedCharacter?.id ?? ""]
+    ).then((result) => result.rows);
 
     return NextResponse.json({
       character: selectedCharacter,
@@ -91,31 +84,31 @@ export async function POST(request: NextRequest) {
 
     const { name, className, avatarUrl } = parsed.data;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const character = await tx.character.create({
-        data: {
-          userId: authUser.userId,
-          name,
-          className,
-          avatarUrl,
-        },
-      });
-
-      const attributes = await tx.attribute.createManyAndReturn({
-        data: DEFAULT_ATTRIBUTES.map((attribute) => ({
-          userId: authUser.userId,
-          characterId: character.id,
-          name: attribute.name,
-          icon: attribute.icon,
-          color: attribute.color,
-          multiplier: attribute.multiplier,
-        })),
-      });
-
-      return {
-        character,
-        attributes,
-      };
+    const result = await withTransaction(async (client) => {
+      const characterResult = await client.query(
+        `INSERT INTO characters (id, "userId", name, "className", "avatarUrl", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING *`,
+        [randomUUID(), authUser.userId, name, className, avatarUrl ?? null]
+      );
+      const character = characterResult.rows[0];
+      const attributes = [];
+      for (const attribute of DEFAULT_ATTRIBUTES) {
+        const inserted = await client.query(
+          `INSERT INTO attributes (id, "userId", "characterId", name, value, icon, color, multiplier, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, 0, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+          [
+            randomUUID(),
+            authUser.userId,
+            character.id,
+            attribute.name,
+            attribute.icon,
+            attribute.color,
+            attribute.multiplier,
+          ]
+        );
+        attributes.push(inserted.rows[0]);
+      }
+      return { character, attributes };
     });
 
     const response = NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 
@@ -60,12 +60,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingAttribute = await prisma.attribute.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-      },
-    });
+    const existingResult = await query(
+      `SELECT * FROM attributes WHERE id = $1 AND "characterId" = $2`,
+      [id, character.id]
+    );
+    const existingAttribute = existingResult.rows[0];
 
     if (!existingAttribute) {
       return NextResponse.json(
@@ -76,12 +75,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const attribute = await prisma.attribute.update({
-      where: {
-        id,
-      },
-      data: parsed.data,
+    const fields = Object.entries(parsed.data);
+    const values: unknown[] = [id, character.id];
+    const assignments = fields.map(([field, value]) => {
+      values.push(value);
+      return `"${field}" = $${values.length}`;
     });
+    const attribute = await query(
+      `UPDATE attributes SET ${assignments.length ? `${assignments.join(", ")}, ` : ""}"updatedAt" = NOW()
+       WHERE id = $1 AND "characterId" = $2 RETURNING *`,
+      values
+    ).then((result) => result.rows[0]);
 
     return NextResponse.json({
       message: "Attribute updated successfully.",
@@ -90,7 +94,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   } catch (error: unknown) {
     console.error("UPDATE_ATTRIBUTE_ERROR", error);
 
-    if (getErrorCode(error) === "P2002") {
+    if (getErrorCode(error) === "23505") {
       return NextResponse.json(
         {
           message: "Attribute name already exists.",
@@ -132,15 +136,14 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingAttribute = await prisma.attribute.findFirst({
-      where: {
-        id,
-        characterId: character.id,
-      },
-      include: {
-        missions: true,
-      },
-    });
+    const existingResult = await query<{ mission_count: number }>(
+      `SELECT COUNT(m.id)::int AS mission_count
+       FROM attributes a LEFT JOIN missions m ON m."attributeId" = a.id
+       WHERE a.id = $1 AND a."characterId" = $2
+       GROUP BY a.id`,
+      [id, character.id]
+    );
+    const existingAttribute = existingResult.rows[0];
 
     if (!existingAttribute) {
       return NextResponse.json(
@@ -151,7 +154,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (existingAttribute.missions.length > 0) {
+    if (existingAttribute.mission_count > 0) {
       return NextResponse.json(
         {
           message: "Cannot delete attribute because it has missions.",
@@ -160,11 +163,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    await prisma.attribute.delete({
-      where: {
-        id,
-      },
-    });
+    await query(`DELETE FROM attributes WHERE id = $1`, [id]);
 
     return NextResponse.json({
       message: "Attribute deleted successfully.",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import json
 import logging
 import re
@@ -678,8 +679,11 @@ def main() -> int:
     parser.add_argument("--pattern-id", type=int, help="Generate examples for one grammar pattern")
     parser.add_argument("--example-id", type=int, help="Generate one grammar example")
     parser.add_argument("--limit", type=int, help="Process at most this many matching grammar examples")
+    parser.add_argument("--step", type=int, default=1, help="Maximum number of example tasks to run at once.")
     parser.add_argument("--force", action="store_true", help="Replace existing output videos")
     args = parser.parse_args()
+    if args.step < 1:
+        parser.error("--step must be a positive integer.")
     job: GrammarExampleVideoJob | None = None
     try:
         config = load_config(args.config)
@@ -697,17 +701,56 @@ def main() -> int:
             raise RuntimeError("No matching grammar examples found.")
         results: list[str] = []
         errors: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                results.append(str(job.generate(row, force=args.force)))
-            except Exception as error:
-                job.logger.error(
-                    "Video generation failed example_id=%s: %s",
-                    row["example_id"],
-                    error,
-                    exc_info=True,
+        if args.step > 1 and len(rows) > 1:
+            def run_example(row: dict[str, Any]) -> tuple[dict[str, Any], int, str]:
+                command = [sys.executable, str(Path(__file__).resolve())]
+                if args.config:
+                    command.extend(["--config", args.config])
+                if args.schema:
+                    command.extend(["--schema", args.schema])
+                command.extend(["--example-id", str(row["example_id"])])
+                if args.force:
+                    command.append("--force")
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    check=False,
                 )
-                errors.append({"example_id": row["example_id"], "error": str(error)})
+                return row, completed.returncode, completed.stdout
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.step) as executor:
+                futures = [executor.submit(run_example, row) for row in rows]
+                for future in concurrent.futures.as_completed(futures):
+                    row, exit_code, output = future.result()
+                    try:
+                        child_result = json.loads(output.strip().splitlines()[-1])
+                    except (IndexError, json.JSONDecodeError):
+                        child_result = {}
+                    if isinstance(child_result, dict):
+                        results.extend(
+                            str(path) for path in child_result.get("videos", [])
+                        )
+                        errors.extend(child_result.get("errors", []))
+                    if exit_code and not (
+                        isinstance(child_result, dict) and child_result.get("errors")
+                    ):
+                        errors.append({
+                            "example_id": row["example_id"],
+                            "error": f"Task failed with exit code {exit_code}.",
+                        })
+        else:
+            for row in rows:
+                try:
+                    results.append(str(job.generate(row, force=args.force)))
+                except Exception as error:
+                    job.logger.error(
+                        "Video generation failed example_id=%s: %s",
+                        row["example_id"],
+                        error,
+                        exc_info=True,
+                    )
+                    errors.append({"example_id": row["example_id"], "error": str(error)})
         job.logger.info(
             "Grammar example video job finished: generated_or_existing=%s errors=%s.",
             len(results),

@@ -10,7 +10,7 @@ import styles from "./AuthForm.module.css";
 export default function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(mode === "login" ? "admin" : "");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,17 +95,9 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
           </button>
         </form>
 
-        <div className={styles.switchMode}>
-          {isRegister ? (
-            <>
-              Already have an account? <Link href={appPath("/login")}>Login</Link>
-            </>
-          ) : (
-            <>
-              No account yet? <Link href={appPath("/register")}>Register</Link>
-            </>
-          )}
-        </div>
+        {!isRegister && (
+          <div className={styles.switchMode}>Account registration is temporarily disabled.</div>
+        )}
       </section>
     </main>
   );

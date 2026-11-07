@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
 import { CHARACTER_COOKIE } from "@lifequest/lib/character/session";
 
@@ -25,12 +25,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const character = await prisma.character.findFirst({
-    where: {
-      id: parsed.data.characterId,
-      userId: authUser.userId,
-    },
-  });
+  const result = await query(
+    `SELECT * FROM characters WHERE id = $1 AND "userId" = $2 LIMIT 1`,
+    [parsed.data.characterId, authUser.userId]
+  );
+  const character = result.rows[0] ?? null;
 
   if (!character) {
     return NextResponse.json({ message: "Character not found." }, { status: 404 });

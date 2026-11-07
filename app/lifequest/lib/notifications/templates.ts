@@ -1,5 +1,7 @@
-import { PushNotificationType } from "@prisma/client";
-import { prisma } from "@lifequest/lib/prisma";
+import { randomUUID } from "node:crypto";
+import { query } from "@lifequest/lib/db";
+
+export type PushNotificationType = "MISSION_DAILY" | "EVENT_START";
 
 const DEFAULT_TEMPLATES: Record<PushNotificationType, { title: string; body: string }> = {
   MISSION_DAILY: {
@@ -20,17 +22,15 @@ export function renderTemplate(template: string, values: Record<string, string |
 }
 
 export async function getPushTemplate(type: PushNotificationType) {
-  const template = await prisma.pushNotificationTemplate.upsert({
-    where: { type },
-    update: {},
-    create: {
-      type,
-      title: DEFAULT_TEMPLATES[type].title,
-      body: DEFAULT_TEMPLATES[type].body,
-    },
-  });
-
-  return template;
+  const fallback = DEFAULT_TEMPLATES[type];
+  const result = await query(
+    `INSERT INTO push_notification_templates (id, type, title, body, "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (type) DO UPDATE SET type = EXCLUDED.type
+     RETURNING id, type, title, body, "createdAt", "updatedAt"`,
+    [randomUUID(), type, fallback.title, fallback.body]
+  );
+  return result.rows[0];
 }
 
 export { DEFAULT_TEMPLATES };

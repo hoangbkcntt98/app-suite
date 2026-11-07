@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MissionDifficulty, MissionRepeatType } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 import { getCurrentUserFromCookie } from "@lifequest/lib/auth";
-import { getMissionRewardByDifficulty } from "@lifequest/lib/mission-rewards";
+import { getMissionRewardByDifficulty, type MissionDifficulty } from "@lifequest/lib/mission-rewards";
 import { getSelectedCharacter } from "@lifequest/lib/character/session";
 
+type MissionRepeatType = "DAILY" | "WEEKLY" | "ONCE";
+const difficulties = ["EASY", "NORMAL", "HARD", "EPIC"] as const;
+const repeatTypes = ["DAILY", "WEEKLY", "ONCE"] as const;
 const createMissionSchema = z.object({
   attributeId: z.string().min(1),
   title: z.string().min(1).max(100),
   description: z.string().max(500).optional().nullable(),
-  difficulty: z.nativeEnum(MissionDifficulty).default(MissionDifficulty.NORMAL),
-  repeatType: z.nativeEnum(MissionRepeatType).default(MissionRepeatType.DAILY),
+  difficulty: z.enum(difficulties).default("NORMAL"),
+  repeatType: z.enum(repeatTypes).default("DAILY"),
   startDate: z.string().datetime().optional().nullable(),
   endDate: z.string().datetime().optional().nullable(),
   goldReward: z.coerce.number().int().min(0).optional().nullable(),
@@ -39,23 +42,21 @@ export async function GET() {
       );
     }
 
-    const missions = await prisma.mission.findMany({
-      where: {
-        characterId: character.id,
-      },
-      include: {
-        attribute: true,
-        logs: {
-          orderBy: {
-            completedDate: "desc",
-          },
-          take: 10,
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const result = await query(
+      `SELECT m.*,
+        to_jsonb(a) AS attribute,
+        COALESCE((
+          SELECT json_agg(l ORDER BY l."completedDate" DESC)
+          FROM (
+            SELECT * FROM mission_logs WHERE "missionId" = m.id
+            ORDER BY "completedDate" DESC LIMIT 10
+          ) l
+        ), '[]'::json) AS logs
+       FROM missions m JOIN attributes a ON a.id = m."attributeId"
+       WHERE m."characterId" = $1 ORDER BY m."createdAt" DESC`,
+      [character.id]
+    );
+    const missions = result.rows;
 
     return NextResponse.json({
       missions,
@@ -119,12 +120,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const attribute = await prisma.attribute.findFirst({
-      where: {
-        id: attributeId,
-        characterId: character.id,
-      },
-    });
+    const attributeResult = await query(
+      `SELECT id FROM attributes WHERE id = $1 AND "characterId" = $2`,
+      [attributeId, character.id]
+    );
+    const attribute = attributeResult.rows[0];
 
     if (!attribute) {
       return NextResponse.json(
@@ -148,25 +148,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mission = await prisma.mission.create({
-      data: {
-        userId: authUser.userId,
-        characterId: character.id,
-        attributeId,
-        title,
-        description,
-        difficulty,
-        repeatType,
-        startDate: parsedStartDate,
-        endDate: parsedEndDate,
-        expReward: reward.expReward,
-        goldReward: goldReward ?? reward.goldReward,
-        statReward: reward.statReward,
-      },
-      include: {
-        attribute: true,
-      },
-    });
+    const result = await query(
+      `INSERT INTO missions (
+        id, "userId", "characterId", "attributeId", title, description,
+        difficulty, "repeatType", "startDate", "endDate", "expReward",
+        "goldReward", "statReward", "createdAt", "updatedAt"
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())
+       RETURNING *`,
+      [
+        randomUUID(), authUser.userId, character.id, attributeId, title,
+        description ?? null, difficulty, repeatType, parsedStartDate, parsedEndDate,
+        reward.expReward, goldReward ?? reward.goldReward, reward.statReward,
+      ]
+    );
+    const mission = result.rows[0];
 
     return NextResponse.json(
       {

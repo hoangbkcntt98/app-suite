@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import { prisma } from "@lifequest/lib/prisma";
+import { query } from "@lifequest/lib/db";
 
 export function configureWebPush() {
   const publicKey = process.env.LIFEQUEST_NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -52,11 +52,9 @@ export async function sendPushToSubscriptions(
       const statusCode = (error as { statusCode?: number }).statusCode;
 
       if (statusCode === 404 || statusCode === 410) {
-        await prisma.pushSubscription.delete({
-          where: {
-            id: subscription.id,
-          },
-        });
+        await query(`DELETE FROM push_subscriptions WHERE id = $1`, [
+          subscription.id,
+        ]);
       } else {
         console.error("PUSH_SEND_ERROR", error);
       }

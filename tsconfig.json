@@ -43,6 +43,11 @@
   ],
   "exclude": [
     "node_modules",
-    "jobs/app-tools"
+    "jobs/app-tools",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/backup/**",
+    "**/backups/**"
   ]
 }

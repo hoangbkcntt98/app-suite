@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 
@@ -31,6 +31,19 @@ type BatchRun = {
   error: string | null;
   started_at: string;
   finished_at: string | null;
+};
+
+type SubtaskRun = {
+  id: number;
+  schema: string;
+  object_id: string | null;
+  status: string;
+  object_type: string | null;
+  action: string | null;
+  progress: number | null;
+  log_path: string | null;
+  started_at: string;
+  is_completed: boolean;
 };
 
 type Overview = {
@@ -74,23 +87,37 @@ async function readResponse<T>(response: Response): Promise<T> {
 
 export default function BatchJobManagement() {
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [subtaskRuns, setSubtaskRuns] = useState<SubtaskRun[]>([]);
+  const [subtaskError, setSubtaskError] = useState("");
   const [pythonScripts, setPythonScripts] = useState<string[]>([]);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
   const [loadingScripts, setLoadingScripts] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const [batchActivityJobId, setBatchActivityJobId] = useState("all");
+  const [selectedBatchRunIds, setSelectedBatchRunIds] = useState<string[]>([]);
+  const [selectedSubtaskRunKeys, setSelectedSubtaskRunKeys] = useState<string[]>([]);
+  const [deletingBatchRuns, setDeletingBatchRuns] = useState(false);
+  const [deletingSubtaskRuns, setDeletingSubtaskRuns] = useState(false);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [selectedLogKey, setSelectedLogKey] = useState("");
+  const [logText, setLogText] = useState("");
+  const [logError, setLogError] = useState("");
+  const [loadingLogKey, setLoadingLogKey] = useState("");
+  const [logTruncated, setLogTruncated] = useState(false);
   const [name, setName] = useState("");
   const [scriptPath, setScriptPath] = useState("");
   const [configPath, setConfigPath] = useState("");
   const [argsText, setArgsText] = useState("");
   const [runOnce, setRunOnce] = useState(false);
   const [intervalSeconds, setIntervalSeconds] = useState<number | "">(300);
+  const refreshInProgress = useRef(false);
 
   const reloadPythonScripts = useCallback(async () => {
     setLoadingScripts(true);
@@ -124,35 +151,80 @@ export default function BatchJobManagement() {
       return;
     }
     if (!scriptsLoaded) await reloadPythonScripts();
-    const response = await fetch("/batch-job-management/api/jobs", {
+    const jobParams = new URLSearchParams();
+    if (batchActivityJobId !== "all") {
+      jobParams.set("job_id", batchActivityJobId);
+    }
+    const jobsUrl = jobParams.size
+      ? `/batch-job-management/api/jobs?${jobParams.toString()}`
+      : "/batch-job-management/api/jobs";
+    const response = await fetch(jobsUrl, {
       cache: "no-store",
     });
     const data = await readResponse<Overview & { message?: string }>(response);
     if (!response.ok) throw new Error(data.message || "Không tải được job.");
     setOverview(data);
+    try {
+      const subtaskResponse = await fetch(
+        "/batch-job-management/api/subtask-runs",
+        { cache: "no-store" },
+      );
+      const subtaskData = await readResponse<{
+        runs?: SubtaskRun[];
+        message?: string;
+      }>(subtaskResponse);
+      if (!subtaskResponse.ok) {
+        setSubtaskError(subtaskData.message || "Không tải được sub task activity.");
+      } else {
+        setSubtaskRuns(subtaskData.runs || []);
+        setSubtaskError("");
+      }
+    } catch (error) {
+      setSubtaskError(
+        error instanceof Error ? error.message : "Không tải được sub task activity.",
+      );
+    }
     setMessage("");
     setLoading(false);
-  }, [reloadPythonScripts, scriptsLoaded]);
+  }, [batchActivityJobId, reloadPythonScripts, scriptsLoaded]);
+
+  const refreshNow = useCallback(async () => {
+    if (refreshInProgress.current) return;
+    refreshInProgress.current = true;
+    setRefreshing(true);
+    try {
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Lỗi tải dữ liệu.");
+      setLoading(false);
+    } finally {
+      refreshInProgress.current = false;
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
-    let active = true;
-    const runRefresh = async () => {
-      try {
-        if (active) await refresh();
-      } catch (error) {
-        if (active) {
-          setMessage(error instanceof Error ? error.message : "Lỗi tải dữ liệu.");
-          setLoading(false);
-        }
-      }
-    };
-    void runRefresh();
-    const timer = window.setInterval(runRefresh, 5000);
+    const initialTimer = window.setTimeout(() => void refreshNow(), 0);
+    const timer = window.setInterval(refreshNow, 5000);
     return () => {
-      active = false;
+      window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refreshNow]);
+
+  useEffect(() => {
+    if (!selectedLogKey) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedLogKey("");
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [selectedLogKey]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -311,6 +383,114 @@ export default function BatchJobManagement() {
     }
   }
 
+  async function loadRunLog(
+    source: "batch" | "subtask",
+    id: string | number,
+    schema?: string,
+  ) {
+    const key = `${source}:${schema || ""}:${id}`;
+    setSelectedLogKey(key);
+    setLoadingLogKey(key);
+    setLogText("");
+    setLogError("");
+    setLogTruncated(false);
+    try {
+      const params = new URLSearchParams({ source, id: String(id) });
+      if (schema) params.set("schema", schema);
+      const response = await fetch(
+        `/batch-job-management/api/logs?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      const data = await readResponse<{
+        log?: string;
+        truncated?: boolean;
+        message?: string;
+      }>(response);
+      if (!response.ok) throw new Error(data.message || "Không tải được log.");
+      setLogText(data.log || "");
+      setLogTruncated(data.truncated === true);
+    } catch (error) {
+      setLogError(error instanceof Error ? error.message : "Không tải được log.");
+    } finally {
+      setLoadingLogKey("");
+    }
+  }
+
+  async function deleteSelectedBatchRuns() {
+    if (
+      selectedBatchRunIds.length === 0 ||
+      !window.confirm(`Xóa ${selectedBatchRunIds.length} batch run đã chọn?`)
+    ) {
+      return;
+    }
+    setDeletingBatchRuns(true);
+    try {
+      const response = await fetch("/batch-job-management/api/runs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedBatchRunIds }),
+      });
+      const data = await readResponse<{
+        deletedCount?: number;
+        skippedCount?: number;
+        message?: string;
+      }>(response);
+      if (!response.ok) throw new Error(data.message || "Không xóa được batch activity.");
+      setSelectedBatchRunIds([]);
+      await refresh();
+      setMessage(
+        `Đã xóa ${data.deletedCount || 0} batch run.` +
+          (data.skippedCount ? ` Bỏ qua ${data.skippedCount} run đang chạy.` : ""),
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không xóa được batch activity.");
+    } finally {
+      setDeletingBatchRuns(false);
+    }
+  }
+
+  async function deleteSelectedSubtaskRuns() {
+    const selectedRuns = subtaskRuns.filter((run) =>
+      selectedSubtaskRunKeys.includes(`${run.schema}:${run.id}`),
+    );
+    if (
+      selectedRuns.length === 0 ||
+      !window.confirm(`Xóa ${selectedRuns.length} sub task run đã chọn?`)
+    ) {
+      return;
+    }
+    setDeletingSubtaskRuns(true);
+    try {
+      const response = await fetch("/batch-job-management/api/subtask-runs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runs: selectedRuns.map(({ schema, id }) => ({ schema, id })),
+        }),
+      });
+      const data = await readResponse<{
+        deletedCount?: number;
+        skippedCount?: number;
+        message?: string;
+      }>(response);
+      if (!response.ok) {
+        throw new Error(data.message || "Không xóa được sub task activity.");
+      }
+      setSelectedSubtaskRunKeys([]);
+      await refresh();
+      setMessage(
+        `Đã xóa ${data.deletedCount || 0} sub task run.` +
+          (data.skippedCount ? ` Bỏ qua ${data.skippedCount} run chưa hoàn tất.` : ""),
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Không xóa được sub task activity.",
+      );
+    } finally {
+      setDeletingSubtaskRuns(false);
+    }
+  }
+
   async function signOut() {
     await fetch("/batch-job-management/api/auth", { method: "DELETE" });
     setAuthenticated(false);
@@ -345,7 +525,20 @@ export default function BatchJobManagement() {
   }
 
   const jobs = overview?.jobs || [];
-  const runs = overview?.runs || [];
+  const statusOrder: Record<string, number> = {
+    running: 0,
+    completed: 1,
+    failed: 2,
+  };
+  const runs = [...(overview?.runs || [])].sort(
+    (a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3),
+  );
+  const selectableBatchRunIds = runs
+    .filter((run) => run.status !== "running" && run.status !== "stopping")
+    .map((run) => run.id);
+  const selectableSubtaskRunKeys = subtaskRuns
+    .filter((run) => run.is_completed)
+    .map((run) => `${run.schema}:${run.id}`);
   const activeRuns = runs.filter((run) => run.status === "running").length;
   const enabledJobs = jobs.filter((job) => job.enabled).length;
 
@@ -355,6 +548,13 @@ export default function BatchJobManagement() {
         <Link className={styles.wordmark} href="/">N / WORKSPACE</Link>
         <div className={styles.headerRight}>
           <span className={styles.live}><i /> AUTO REFRESH / 5S</span>
+          <button
+            className={styles.refreshNow}
+            disabled={refreshing}
+            onClick={() => void refreshNow()}
+          >
+            {refreshing ? "Đang tải..." : "Refresh now"}
+          </button>
           <button className={styles.signOut} onClick={signOut}>Thoát</button>
         </div>
       </header>
@@ -454,8 +654,8 @@ export default function BatchJobManagement() {
               </label>
               <p>{runOnce ? "Job chạy một lần ngay sau khi lưu." : <>Run đầu tiên sau interval.<br />Giới hạn: 10 giây – 30 ngày.</>}</p>
             </div>
-            <label>Tham số Python (không bắt buộc)<textarea value={argsText} onChange={(event) => setArgsText(event.target.value)} placeholder={"--limit\n10\n--verbose"} rows={5} /></label>
-            <small className={styles.hint}>Mỗi dòng là một argument riêng. Runner tự thêm `--config &lt;file&gt;`.</small>
+            <label>Tham số Python (không bắt buộc)<textarea value={argsText} onChange={(event) => setArgsText(event.target.value)} placeholder={"--step\n2\n--force"} rows={5} /></label>
+            <small className={styles.hint}>Mỗi dòng là một argument riêng: `--step` ở dòng riêng, `2` ở dòng kế. Runner tự thêm `--config &lt;file&gt;`.</small>
             {editingJobId && <button type="button" className={styles.cancelEdit} onClick={cancelEdit}>Hủy sửa</button>}
             <button className={styles.primary} disabled={busy}>{busy ? "Đang lưu..." : editingJobId ? "Lưu thay đổi" : "Lưu schedule"}<span>↗</span></button>
           </form>
@@ -509,33 +709,215 @@ export default function BatchJobManagement() {
 
       <section className={styles.runsCard}>
         <div className={styles.sectionHead}>
-          <div><p className={styles.kicker}>03 / EXECUTION TELEMETRY</p><h2>Run activity</h2></div>
-          <span className={styles.count}>LATEST {runs.length}</span>
+          <div><p className={styles.kicker}>03 / EXECUTION TELEMETRY</p><h2>Batch activity</h2></div>
+          <div className={styles.activityFilters}>
+            <label htmlFor="batch-activity-job">JOB</label>
+            <select
+              id="batch-activity-job"
+              value={batchActivityJobId}
+              onChange={(event) => {
+                setBatchActivityJobId(event.target.value);
+                setSelectedBatchRunIds([]);
+              }}
+            >
+              <option value="all">All jobs</option>
+              {jobs.map((job) => (
+                <option value={job.id} key={job.id}>{job.name}</option>
+              ))}
+            </select>
+            <span className={styles.count}>RUNS {runs.length}</span>
+            <button
+              className={styles.deleteSelected}
+              disabled={selectedBatchRunIds.length === 0 || deletingBatchRuns}
+              onClick={() => void deleteSelectedBatchRuns()}
+            >
+              {deletingBatchRuns ? "Deleting..." : `Delete selected (${selectedBatchRunIds.length})`}
+            </button>
+          </div>
         </div>
-        {runs.length === 0 ? <div className={styles.empty}>Run sẽ xuất hiện sau khi scheduler lấy schedule đến hạn.</div> : (
+        {runs.length === 0 ? (
+          <div className={styles.empty}>
+            {batchActivityJobId === "all"
+              ? "Batch run sẽ xuất hiện sau khi scheduler lấy schedule đến hạn."
+              : "Không có batch run cho job đã chọn."}
+          </div>
+        ) : (
           <div className={styles.runTable}>
-            <div className={styles.runHeader}><span>JOB / STAGE</span><span>STATUS</span><span>PROGRESS</span><span>STARTED</span><span>RUN ID</span><span>ACTION</span></div>
+            <div className={styles.runHeader}>
+              <input
+                type="checkbox"
+                aria-label="Select all completed batch runs"
+                disabled={selectableBatchRunIds.length === 0}
+                checked={
+                  selectableBatchRunIds.length > 0 &&
+                  selectableBatchRunIds.every((id) => selectedBatchRunIds.includes(id))
+                }
+                onChange={(event) =>
+                  setSelectedBatchRunIds(
+                    event.target.checked ? selectableBatchRunIds : [],
+                  )
+                }
+              />
+              <span>JOB / STAGE</span><span>STATUS</span><span>PROGRESS</span><span>STARTED</span><span>RUN ID</span><span>ACTIONS</span>
+            </div>
             {runs.map((run) => (
               <article className={styles.run} key={run.id}>
+                <input
+                  type="checkbox"
+                  aria-label={`Select batch run ${run.id}`}
+                  checked={selectedBatchRunIds.includes(run.id)}
+                  disabled={run.status === "running" || run.status === "stopping"}
+                  onChange={(event) =>
+                    setSelectedBatchRunIds((selected) =>
+                      event.target.checked
+                        ? [...selected, run.id]
+                        : selected.filter((id) => id !== run.id),
+                    )
+                  }
+                />
                 <div className={styles.runName}><strong>{run.job_name}</strong><small>{run.stage || "starting"}{run.pid ? ` · pid ${run.pid}` : ""}</small>{run.error && <small className={styles.error}>{run.error}</small>}</div>
                 <span className={`${styles.runState} ${run.status === "running" ? styles.runActive : ""}`}>{run.status}</span>
                 <div className={styles.progressCell}><div className={styles.progress}><i style={{ width: `${Math.max(0, Math.min(100, run.progress))}%` }} /></div><small>{run.progress}%</small></div>
                 <time>{prettyDate(run.started_at)}</time>
                 <code title={run.id}>{run.id.slice(0, 8)}</code>
-                {run.status === "running" ? (
+                <div className={styles.runActions}>
                   <button
-                    className={styles.stopRun}
-                    disabled={stoppingRunId === run.id || run.stage === "stopping"}
-                    onClick={() => void stopRun(run.id)}
+                    className={styles.logButton}
+                    disabled={!run.log_path || loadingLogKey === `batch::${run.id}`}
+                    onClick={() => void loadRunLog("batch", run.id)}
                   >
-                    {stoppingRunId === run.id || run.stage === "stopping" ? "Stopping..." : "Stop"}
+                    {loadingLogKey === `batch::${run.id}` ? "Loading..." : "Load logs"}
                   </button>
-                ) : <span>—</span>}
+                  {run.status === "running" && (
+                    <button
+                      className={styles.stopRun}
+                      disabled={stoppingRunId === run.id || run.stage === "stopping"}
+                      onClick={() => void stopRun(run.id)}
+                    >
+                      {stoppingRunId === run.id || run.stage === "stopping" ? "Stopping..." : "Stop"}
+                    </button>
+                  )}
+                </div>
               </article>
             ))}
           </div>
         )}
       </section>
+
+      <section className={styles.runsCard}>
+        <div className={styles.sectionHead}>
+          <div><p className={styles.kicker}>04 / JOB OUTPUT RECORDS</p><h2>Sub task activity</h2></div>
+          <div className={styles.activityFilters}>
+            <span className={styles.count}>LATEST {subtaskRuns.length} / 100</span>
+            <button
+              className={styles.deleteSelected}
+              disabled={selectedSubtaskRunKeys.length === 0 || deletingSubtaskRuns}
+              onClick={() => void deleteSelectedSubtaskRuns()}
+            >
+              {deletingSubtaskRuns ? "Deleting..." : `Delete selected (${selectedSubtaskRunKeys.length})`}
+            </button>
+          </div>
+        </div>
+        {subtaskError ? (
+          <p className={styles.notice}>{subtaskError}</p>
+        ) : subtaskRuns.length === 0 ? (
+          <div className={styles.empty}>Chưa có sub task run trong các schema cấu hình.</div>
+        ) : (
+          <div className={styles.runTable}>
+            <div className={styles.subtaskHeader}>
+              <input
+                type="checkbox"
+                aria-label="Select all completed subtask runs"
+                disabled={selectableSubtaskRunKeys.length === 0}
+                checked={
+                  selectableSubtaskRunKeys.length > 0 &&
+                  selectableSubtaskRunKeys.every((key) => selectedSubtaskRunKeys.includes(key))
+                }
+                onChange={(event) =>
+                  setSelectedSubtaskRunKeys(
+                    event.target.checked ? selectableSubtaskRunKeys : [],
+                  )
+                }
+              />
+              <span>OBJECT ID</span><span>STATUS</span><span>OBJECT TYPE</span>
+              <span>ACTION</span><span>PROGRESS</span><span>STARTED</span><span>ACTIONS</span>
+            </div>
+            {subtaskRuns.map((run) => {
+              const logKey = `subtask:${run.schema}:${run.id}`;
+              const progress = Math.max(0, Math.min(100, run.progress || 0));
+              const runKey = `${run.schema}:${run.id}`;
+              return (
+                <article className={styles.subtaskRun} key={`${run.schema}:${run.id}`}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select subtask run ${run.id}`}
+                    checked={selectedSubtaskRunKeys.includes(runKey)}
+                    disabled={!run.is_completed}
+                    onChange={(event) =>
+                      setSelectedSubtaskRunKeys((selected) =>
+                        event.target.checked
+                          ? [...selected, runKey]
+                          : selected.filter((key) => key !== runKey),
+                      )
+                    }
+                  />
+                  <code title={run.object_id || ""}>{run.object_id || "—"}</code>
+                  <span className={`${styles.runState} ${run.status === "running" || run.status === "starting" ? styles.runActive : ""}`}>{run.status}</span>
+                  <span>{run.object_type || "—"}</span>
+                  <span>{run.action || "—"}</span>
+                  <div className={styles.progressCell}><div className={styles.progress}><i style={{ width: `${progress}%` }} /></div><small>{progress}%</small></div>
+                  <time>{prettyDate(run.started_at)}</time>
+                  <button
+                    className={styles.logButton}
+                    disabled={!run.log_path || loadingLogKey === logKey}
+                    onClick={() => void loadRunLog("subtask", run.id, run.schema)}
+                  >
+                    {loadingLogKey === logKey ? "Loading..." : "Load logs"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {selectedLogKey && (
+        <div
+          className={styles.logOverlay}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedLogKey("");
+          }}
+        >
+          <section
+            className={styles.logCard}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="log-viewer-title"
+          >
+            <div className={styles.sectionHead}>
+              <div><p className={styles.kicker}>RUN OUTPUT</p><h2 id="log-viewer-title">Log viewer</h2></div>
+              <button
+                className={styles.logButton}
+                onClick={() => setSelectedLogKey("")}
+                autoFocus
+              >
+                Close
+              </button>
+            </div>
+            {loadingLogKey === selectedLogKey ? (
+              <p className={styles.hint}>Đang tải log...</p>
+            ) : logError ? (
+              <p className={styles.error}>{logError}</p>
+            ) : (
+              <>
+                {logTruncated && <p className={styles.hint}>Hiện 64 KB cuối của log.</p>}
+                <pre className={styles.logOutput}>{logText || "Log trống."}</pre>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
       <footer className={styles.footer}>
         <span>BATCH JOB MANAGEMENT / LOCAL PYTHON RUNNER</span>
